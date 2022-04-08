@@ -19,10 +19,10 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <string.h>
-
-#include <stdlib.h>
 #include <Python.h>
-#include <bluesky_malloc.h>
+#include <jemalloc.h>
+
+// #include <bluesky_je_malloc.h>
 
 struct socket_server
 {
@@ -91,6 +91,7 @@ void *socket_init(void *args)
 }
 
 void init()
+
 {
     if (SOCKET_SERVER)
     {
@@ -101,7 +102,7 @@ void init()
     {
         return;
     }
-    SOCKET_SERVER = malloc(sizeof(*SOCKET_SERVER));
+    SOCKET_SERVER = je_malloc(sizeof(*SOCKET_SERVER));
     SOCKET_SERVER->recv_fd = fd[0];
     SOCKET_SERVER->send_fd = fd[1];
     pthread_t sokcet_t;
@@ -237,11 +238,11 @@ conn_readcb(struct bufferevent *bev, void *arg)
     printf("receive data:%s, size:%d\n", buf, (int)size);
     // int len = atoi(buf);
     // printf("长度:%d\n",len);
-    // char * datas = malloc(len);
+    // char * datas = je_malloc(len);
     // bufferevent_read(bev,datas,len);
 
     struct request_package request;
-    request.u.send.data = malloc(sizeof(buf));
+    request.u.send.data = je_malloc(sizeof(buf));
     memcpy(request.u.send.data, &buf, sizeof(buf));
     send_response(&request, 'S', sizeof(request.u.send));
 }
@@ -388,7 +389,7 @@ static PyObject *py_start(PyObject *self, PyObject *args)
     {
         return Py_None;
     }
-    SOCKET_RESPONSE_SERVER = malloc(sizeof(*SOCKET_RESPONSE_SERVER));
+    SOCKET_RESPONSE_SERVER = je_malloc(sizeof(*SOCKET_RESPONSE_SERVER));
     SOCKET_RESPONSE_SERVER->recv_fd = fd[0];
     SOCKET_RESPONSE_SERVER->send_fd = fd[1];
 

@@ -12,7 +12,7 @@ $(JEMALLOC_STATICLIB) : 3rd/jemalloc/Makefile
 	git submodule update --init
 
 3rd/jemalloc/Makefile : | 3rd/jemalloc/autogen.sh
-	cd 3rd/jemalloc && ./autogen.sh --with-jemalloc-prefix=je_ --enable-prof
+	cd 3rd/jemalloc && ./autogen.sh --with-jemalloc-prefix=je_ --enable-prof && ./configure CFLAGS=-fPIC --with-jemalloc-prefix=je_ --disable-initial-exec-tls
 
 all : jemalloc
 
@@ -23,7 +23,7 @@ jemalloc : $(MALLOC_STATICLIB)
 LIBEVENT_STATICLIB := 3rd/libevent/.libs/libevent.a
 
 $(LIBEVENT_STATICLIB) : 3rd/libevent/autogen.sh
-	cd 3rd/libevent && ./autogen.sh && ./configure && make
+	cd 3rd/libevent && ./autogen.sh && ./configure CFLAGS=-fPIC && make
 
 3rd/libevent/autogen.sh :
 	git submodule update --init
