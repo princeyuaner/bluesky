@@ -5,4 +5,5 @@ A simple and efficient game server engine
 
 ```
 $ make
+$ python setup.py build
 ```
