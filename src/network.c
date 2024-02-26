@@ -1,8 +1,9 @@
 #include <network.h>
+#include <skynet_mq.h>
 
-static struct socket_pip *SOCKET_PIP = NULL;
-static struct event_base *socket_base = NULL;
-static struct bufferevent *client_bev = NULL;
+static struct socket_server *SOCKET_SERVER = NULL;
+static struct event_base *SOCKET_BASE = NULL;
+static struct bufferevent *CLIENT_BEV = NULL;
 
 static void conn_eventcb(struct bufferevent *bev, short events, void *user_data)
 {
@@ -42,18 +43,18 @@ static void listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
 {
     struct event_base *base = user_data;
     printf("listener_cb:%d", fd);
-    client_bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-    if (!client_bev)
+    CLIENT_BEV = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
+    if (!CLIENT_BEV)
     {
         printf("Error constructing bufferevent!");
         event_base_loopbreak(base);
         return;
     }
-    bufferevent_setcb(client_bev, conn_readcb, NULL, conn_eventcb, NULL);
-    bufferevent_enable(client_bev, EV_READ);
+    bufferevent_setcb(CLIENT_BEV, conn_readcb, NULL, conn_eventcb, NULL);
+    bufferevent_enable(CLIENT_BEV, EV_READ);
 
     // struct request_package request;
-    // request.u.accept.fd = (int)client_bev->ev_read.ev_fd;
+    // request.u.accept.fd = (int)CLIENT_BEV->ev_read.ev_fd;
     // send_response(&request, 'A', sizeof(request.u.accept));
 }
 
@@ -64,7 +65,7 @@ static void do_listen(struct request_listen *listen)
     sin.sin_family = AF_INET;
     sin.sin_port = htons(listen->port);
 
-    listener = evconnlistener_new_bind(socket_base, listener_cb, (void *)socket_base,
+    listener = evconnlistener_new_bind(SOCKET_BASE, listener_cb, (void *)SOCKET_BASE,
                                        LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE, -1,
                                        (struct sockaddr *)&sin,
                                        sizeof(sin));
@@ -100,8 +101,8 @@ static void pipe_read(int fd, short which, void *args)
         do_listen((struct request_listen *)buffer);
         break;
     case 'S':
-        // bufferevent_write(client_bev, ((struct request_send *)buffer)->data, strlen(((struct request_send *)buffer)->data));
-        // bufferevent_enable(client_bev, EV_WRITE);
+        // bufferevent_write(CLIENT_BEV, ((struct request_send *)buffer)->data, strlen(((struct request_send *)buffer)->data));
+        // bufferevent_enable(CLIENT_BEV, EV_WRITE);
         break;
     default:
         return;
@@ -113,24 +114,24 @@ void *new_socket_event(void *args)
 
     struct event *ev;
 
-    socket_base = event_base_new();
-    if (!socket_base)
+    SOCKET_BASE = event_base_new();
+    if (!SOCKET_BASE)
     {
         fprintf(stderr, "Could not initialize libevent!\n");
         return NULL;
     }
 
-    ev = event_new(socket_base, SOCKET_PIP->recv_fd, EV_READ | EV_PERSIST, pipe_read, NULL);
+    ev = event_new(SOCKET_BASE, SOCKET_SERVER->recv_fd, EV_READ | EV_PERSIST, pipe_read, NULL);
     event_add(ev, NULL);
 
-    event_base_dispatch(socket_base);
-    event_base_free(socket_base);
+    event_base_dispatch(SOCKET_BASE);
+    event_base_free(SOCKET_BASE);
     return NULL;
 }
 
 static PyObject *network_init(PyObject *self, PyObject *args)
 {
-    if (SOCKET_PIP)
+    if (SOCKET_SERVER)
     {
         Py_RETURN_NONE;
     }
@@ -139,9 +140,9 @@ static PyObject *network_init(PyObject *self, PyObject *args)
     {
         Py_RETURN_NONE;
     }
-    SOCKET_PIP = je_malloc(sizeof(*SOCKET_PIP));
-    SOCKET_PIP->recv_fd = fd[0];
-    SOCKET_PIP->send_fd = fd[1];
+    SOCKET_SERVER = je_malloc(sizeof(*SOCKET_SERVER));
+    SOCKET_SERVER->recv_fd = fd[0];
+    SOCKET_SERVER->send_fd = fd[1];
     pthread_t sokcet_t;
     pthread_create(&sokcet_t, NULL, new_socket_event, NULL);
     Py_RETURN_NONE;

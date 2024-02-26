@@ -22,10 +22,10 @@
 #include <Python.h>
 #include <jemalloc.h>
 
-struct socket_pip
+struct socket_server
 {
-    int recv_fd;
-    int send_fd;
+    int recv_fd; //接收管道
+    int send_fd; //发送管道
 };
 
 struct request_listen
