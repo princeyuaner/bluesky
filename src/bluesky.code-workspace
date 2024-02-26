@@ -10,7 +10,8 @@
 			"event_struct.h": "c",
 			"event-config.h": "c",
 			"evbuffer-internal.h": "c",
-			"util.h": "c"
+			"util.h": "c",
+			"assert.h": "c"
 		}
 	}
 }

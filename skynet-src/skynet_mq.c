@@ -1,6 +1,4 @@
-#include "skynet.h"
 #include "skynet_mq.h"
-#include "skynet_handle.h"
 #include "spinlock.h"
 
 #include <stdio.h>
@@ -8,6 +6,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <jemalloc.h>
 
 #define DEFAULT_QUEUE_SIZE 64
 #define MAX_GLOBAL_MQ 0x10000
@@ -33,7 +32,7 @@ struct message_queue {
 
 struct message_queue * 
 skynet_mq_create() {
-	struct message_queue *q = skynet_malloc(sizeof(*q));
+	struct message_queue *q = je_malloc(sizeof(*q));
 	q->cap = DEFAULT_QUEUE_SIZE;
 	q->head = 0;
 	q->tail = 0;
@@ -45,7 +44,7 @@ skynet_mq_create() {
 	q->release = 0;
 	q->overload = 0;
 	q->overload_threshold = MQ_OVERLOAD;
-	q->queue = skynet_malloc(sizeof(struct skynet_message) * q->cap);
+	q->queue = je_malloc(sizeof(struct skynet_message) * q->cap);
 	q->next = NULL;
 
 	return q;
@@ -55,13 +54,8 @@ static void
 _release(struct message_queue *q) {
 	assert(q->next == NULL);
 	SPIN_DESTROY(q)
-	skynet_free(q->queue);
-	skynet_free(q);
-}
-
-uint32_t 
-skynet_mq_handle(struct message_queue *q) {
-	return q->handle;
+	je_free(q->queue);
+	je_free(q);
 }
 
 int
@@ -129,7 +123,7 @@ skynet_mq_pop(struct message_queue *q, struct skynet_message *message) {
 
 static void
 expand_queue(struct message_queue *q) {
-	struct skynet_message *new_queue = skynet_malloc(sizeof(struct skynet_message) * q->cap * 2);
+	struct skynet_message *new_queue = je_malloc(sizeof(struct skynet_message) * q->cap * 2);
 	int i;
 	for (i=0;i<q->cap;i++) {
 		new_queue[i] = q->queue[(q->head + i) % q->cap];
@@ -138,7 +132,7 @@ expand_queue(struct message_queue *q) {
 	q->tail = q->cap;
 	q->cap *= 2;
 	
-	skynet_free(q->queue);
+	je_free(q->queue);
 	q->queue = new_queue;
 }
 
@@ -156,20 +150,7 @@ skynet_mq_push(struct message_queue *q, struct skynet_message *message) {
 		expand_queue(q);
 	}
 
-	if (q->in_global == 0) {
-		q->in_global = MQ_IN_GLOBAL;
-		skynet_globalmq_push(q);
-	}
-	
 	SPIN_UNLOCK(q)
-}
-
-void 
-skynet_mq_init() {
-	struct global_queue *q = skynet_malloc(sizeof(*q));
-	memset(q,0,sizeof(*q));
-	SPIN_INIT(q);
-	Q=q;
 }
 
 void 
@@ -177,9 +158,6 @@ skynet_mq_mark_release(struct message_queue *q) {
 	SPIN_LOCK(q)
 	assert(q->release == 0);
 	q->release = 1;
-	if (q->in_global != MQ_IN_GLOBAL) {
-		skynet_globalmq_push(q);
-	}
 	SPIN_UNLOCK(q)
 }
 
@@ -199,8 +177,5 @@ skynet_mq_release(struct message_queue *q, message_drop drop_func, void *ud) {
 	if (q->release) {
 		SPIN_UNLOCK(q)
 		_drop_queue(q, drop_func, ud);
-	} else {
-		skynet_globalmq_push(q);
-		SPIN_UNLOCK(q)
 	}
 }

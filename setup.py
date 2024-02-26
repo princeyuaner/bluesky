@@ -3,7 +3,7 @@ import os
 import sys
 
 bluesky = Extension(name='bluesky',
-                    sources=['src/network.c', 'src/bluesky.c'],
+                    sources=['skynet-src/skynet_mq.c','src/network.c', 'src/bluesky.c','src/server.c'],
                     include_dirs=[f"{os.getcwd()}/3rd/jemalloc/include/jemalloc", f"{os.getcwd()}/3rd/libevent/include", f"{os.getcwd()}/src",f"{os.getcwd()}/skynet-src"],
                     extra_objects=[f"{os.getcwd()}/3rd/jemalloc/lib/libjemalloc.a", f"{os.getcwd()}/3rd/libevent/.libs/libevent.a"],
                     )

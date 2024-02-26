@@ -1,5 +1,7 @@
 #include <network.h>
 #include <skynet_mq.h>
+#include <server.h>
+#include <pthread.h>
 
 static struct socket_server *SOCKET_SERVER = NULL;
 static struct event_base *SOCKET_BASE = NULL;
@@ -28,6 +30,9 @@ static void conn_readcb(struct bufferevent *bev, void *arg)
     bzero(buf, sizeof(buf));
     bufferevent_read(bev, buf,totalLen);
     printf("receive data:%s, size:%d\n", buf,(int)totalLen);
+    struct skynet_message smsg;
+    skynet_mq_push(BLUE_SKYSERVER->queue,&smsg);
+    pthread_cond_signal(&BLUE_SKYSERVER->cond);
 }
 
 static void conn_writecb(struct bufferevent *bev, void *arg)
@@ -40,18 +45,18 @@ static void listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
 {
     struct event_base *base = user_data;
     printf("accept fd:%d", fd);
-    struct bufferevent *clientBev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-    if (!clientBev)
+    struct bufferevent *client_bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
+    if (!client_bev)
     {
         printf("Error constructing bufferevent!");
         event_base_loopbreak(base);
         return;
     }
-    bufferevent_setcb(clientBev, conn_readcb, conn_writecb, conn_eventcb, NULL);
-    bufferevent_enable(clientBev, EV_READ);
+    bufferevent_setcb(client_bev, conn_readcb, conn_writecb, conn_eventcb, NULL);
+    bufferevent_enable(client_bev, EV_READ);
     struct socket *s = je_malloc(sizeof(*s));
     s->fd = fd;
-    s->clientBev = clientBev;
+    s->client_bev = client_bev;
     SOCKET_SERVER->slot[fd] = s;
 }
 
@@ -103,7 +108,7 @@ static void pipe_read(int fd, short which, void *args)
             struct socket *socket =  SOCKET_SERVER->slot[send->fd];
             if(socket != NULL)
             {
-                bufferevent_enable(socket->clientBev, EV_WRITE);
+                bufferevent_enable(socket->client_bev, EV_WRITE);
             }
             break;
         }
@@ -171,24 +176,46 @@ static PyObject *network_init(PyObject *self, PyObject *args)
     {
         Py_RETURN_NONE;
     }
+
     if (create_socket_server() == false)
     {
         Py_RETURN_NONE;
+    }
+
+    PyObject *accept_cb;
+    PyObject *disconnect_cd;
+    PyObject *data_recv_cb;
+
+    if (PyArg_ParseTuple(args, "OOO", &accept_cb, &disconnect_cd,&data_recv_cb))
+    {
+        if (!PyCallable_Check(accept_cb))
+        {
+            PyErr_SetString(PyExc_TypeError, "accept_cb must be callable");
+            Py_RETURN_NONE;
+        }
+        if (!PyCallable_Check(disconnect_cd))
+        {
+            PyErr_SetString(PyExc_TypeError, "disconnect_cd must be callable");
+            Py_RETURN_NONE;
+        }
+        if (!PyCallable_Check(data_recv_cb))
+        {
+            PyErr_SetString(PyExc_TypeError, "data_recv_cb must be callable");
+            Py_RETURN_NONE;
+        }
+        Py_XINCREF(accept_cb);        /* Add a reference to new callback */
+        SOCKET_SERVER->accept_cb = accept_cb;      /* Remember new callback */
+
+        Py_XINCREF(disconnect_cd);   /* Add a reference to new callback */
+        SOCKET_SERVER->disconnect_cb = disconnect_cd; /* Remember new callback */
+
+        Py_XINCREF(data_recv_cb);   /* Add a reference to new callback */
+        SOCKET_SERVER->data_recv_cb = data_recv_cb; /* Remember new callback */
     }
     
     pthread_t sokcet_t;
     pthread_create(&sokcet_t, NULL, new_socket_event, NULL);
     Py_RETURN_NONE;
-}
-
-static PyObject *py_start(PyObject *self, PyObject *args)
-{
-    while (true)
-    {
-        /* code */
-    }
-    
-    return Py_None;
 }
 
 bool create_socket_server()
@@ -205,9 +232,8 @@ bool create_socket_server()
 }
 
 static PyMethodDef network_methods[] = {
-    {"init", (PyCFunction)network_init, METH_NOARGS, NULL},
+    {"init", (PyCFunction)network_init, METH_VARARGS, NULL},
     {"listen", (PyCFunction)py_listen, METH_VARARGS, NULL},
-    {"start", (PyCFunction)py_start, METH_NOARGS, NULL},
     {NULL, NULL, 0, NULL}};
 
 static struct PyModuleDef network_module =

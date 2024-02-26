@@ -1,8 +1,10 @@
 #include <network.h>
+#include <server.h>
 
 static int bluesky_exec(PyObject *module)
 {
     PyModule_AddObject(module, "network", PyInit_network());
+    PyModule_AddObject(module, "server", PyInit_server());
     return 0;
 }
 
