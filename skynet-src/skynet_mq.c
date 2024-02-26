@@ -20,7 +20,6 @@
 
 struct message_queue {
 	struct spinlock lock;
-	uint32_t handle;
 	int cap;
 	int head;
 	int tail;
@@ -33,9 +32,8 @@ struct message_queue {
 };
 
 struct message_queue * 
-skynet_mq_create(uint32_t handle) {
+skynet_mq_create() {
 	struct message_queue *q = skynet_malloc(sizeof(*q));
-	q->handle = handle;
 	q->cap = DEFAULT_QUEUE_SIZE;
 	q->head = 0;
 	q->tail = 0;

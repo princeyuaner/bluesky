@@ -4,5 +4,13 @@
 			"path": ".."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"files.associations": {
+			"listener.h": "c",
+			"event_struct.h": "c",
+			"event-config.h": "c",
+			"evbuffer-internal.h": "c",
+			"util.h": "c"
+		}
+	}
 }

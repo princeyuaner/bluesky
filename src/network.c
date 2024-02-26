@@ -3,7 +3,6 @@
 
 static struct socket_server *SOCKET_SERVER = NULL;
 static struct event_base *SOCKET_BASE = NULL;
-static struct bufferevent *CLIENT_BEV = NULL;
 
 static void conn_eventcb(struct bufferevent *bev, short events, void *user_data)
 {
@@ -23,39 +22,37 @@ static void conn_eventcb(struct bufferevent *bev, short events, void *user_data)
 
 static void conn_readcb(struct bufferevent *bev, void *arg)
 {
-    char buf[100];
+    struct evbuffer *input = bufferevent_get_input(bev);
+    size_t totalLen = evbuffer_get_length(input);
+    char buf[totalLen];
     bzero(buf, sizeof(buf));
-    size_t size = bufferevent_read(bev, buf, sizeof(buf));
-    printf("receive data:%s, size:%d\n", buf, (int)size);
-    // int len = atoi(buf);
-    // printf("长度:%d\n",len);
-    // char * datas = je_malloc(len);
-    // bufferevent_read(bev,datas,len);
+    bufferevent_read(bev, buf,totalLen);
+    printf("receive data:%s, size:%d\n", buf,(int)totalLen);
+}
 
-    struct request_package request;
-    request.u.send.data = je_malloc(sizeof(buf));
-    memcpy(request.u.send.data, &buf, sizeof(buf));
-    // send_response(&request, 'S', sizeof(request.u.send));
+static void conn_writecb(struct bufferevent *bev, void *arg)
+{
+    return;
 }
 
 static void listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
                         struct sockaddr *sa, int socklen, void *user_data)
 {
     struct event_base *base = user_data;
-    printf("listener_cb:%d", fd);
-    CLIENT_BEV = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-    if (!CLIENT_BEV)
+    printf("accept fd:%d", fd);
+    struct bufferevent *clientBev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
+    if (!clientBev)
     {
         printf("Error constructing bufferevent!");
         event_base_loopbreak(base);
         return;
     }
-    bufferevent_setcb(CLIENT_BEV, conn_readcb, NULL, conn_eventcb, NULL);
-    bufferevent_enable(CLIENT_BEV, EV_READ);
-
-    // struct request_package request;
-    // request.u.accept.fd = (int)CLIENT_BEV->ev_read.ev_fd;
-    // send_response(&request, 'A', sizeof(request.u.accept));
+    bufferevent_setcb(clientBev, conn_readcb, conn_writecb, conn_eventcb, NULL);
+    bufferevent_enable(clientBev, EV_READ);
+    struct socket *s = je_malloc(sizeof(*s));
+    s->fd = fd;
+    s->clientBev = clientBev;
+    SOCKET_SERVER->slot[fd] = s;
 }
 
 static void do_listen(struct request_listen *listen)
@@ -101,9 +98,15 @@ static void pipe_read(int fd, short which, void *args)
         do_listen((struct request_listen *)buffer);
         break;
     case 'S':
-        // bufferevent_write(CLIENT_BEV, ((struct request_send *)buffer)->data, strlen(((struct request_send *)buffer)->data));
-        // bufferevent_enable(CLIENT_BEV, EV_WRITE);
-        break;
+        {
+            struct request_send * send = (struct request_send *)buffer;
+            struct socket *socket =  SOCKET_SERVER->slot[send->fd];
+            if(socket != NULL)
+            {
+                bufferevent_enable(socket->clientBev, EV_WRITE);
+            }
+            break;
+        }
     default:
         return;
     };
@@ -129,27 +132,82 @@ void *new_socket_event(void *args)
     return NULL;
 }
 
+static void
+send_request(struct request_package *request, char type, int len)
+{
+    request->header[6] = (uint8_t)type;
+    request->header[7] = (uint8_t)len;
+    const char *req = (const char *)request + offsetof(struct request_package, header[6]);
+    for (;;)
+    {
+        ssize_t n = write(SOCKET_SERVER->send_fd, req, len + 2);
+        if (n < 0)
+        {
+            continue;
+        }
+        assert(n == len + 2);
+        return;
+    }
+}
+
+static PyObject *py_listen(PyObject *self, PyObject *args)
+{
+    printf("py_listen");
+    char *ip;
+    int port;
+    if (!PyArg_ParseTuple(args, "si", &ip, &port))
+    {
+        return NULL;
+    }
+    struct request_package request;
+    request.u.listen.port = port;
+    send_request(&request, 'L', sizeof(request.u.listen));
+    Py_RETURN_NONE;
+}
+
 static PyObject *network_init(PyObject *self, PyObject *args)
 {
     if (SOCKET_SERVER)
     {
         Py_RETURN_NONE;
     }
-    int fd[2];
-    if (pipe(fd))
+    if (create_socket_server() == false)
     {
         Py_RETURN_NONE;
     }
-    SOCKET_SERVER = je_malloc(sizeof(*SOCKET_SERVER));
-    SOCKET_SERVER->recv_fd = fd[0];
-    SOCKET_SERVER->send_fd = fd[1];
+    
     pthread_t sokcet_t;
     pthread_create(&sokcet_t, NULL, new_socket_event, NULL);
     Py_RETURN_NONE;
 }
 
+static PyObject *py_start(PyObject *self, PyObject *args)
+{
+    while (true)
+    {
+        /* code */
+    }
+    
+    return Py_None;
+}
+
+bool create_socket_server()
+{
+    int fd[2];
+    if (pipe(fd))
+    {
+        return false;
+    }
+    SOCKET_SERVER = je_malloc(sizeof(*SOCKET_SERVER));
+    SOCKET_SERVER->recv_fd = fd[0];
+    SOCKET_SERVER->send_fd = fd[1];
+    return true;
+}
+
 static PyMethodDef network_methods[] = {
     {"init", (PyCFunction)network_init, METH_NOARGS, NULL},
+    {"listen", (PyCFunction)py_listen, METH_VARARGS, NULL},
+    {"start", (PyCFunction)py_start, METH_NOARGS, NULL},
     {NULL, NULL, 0, NULL}};
 
 static struct PyModuleDef network_module =

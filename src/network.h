@@ -21,11 +21,24 @@
 #include <string.h>
 #include <Python.h>
 #include <jemalloc.h>
+#include <spinlock.h>
+
+#define MAX_SOCKET (1<<16)
+
+struct socket
+{
+    int fd;
+    struct spinlock dw_lock;
+    const void * dw_buffer;
+    struct bufferevent *clientBev;
+};
+
 
 struct socket_server
 {
     int recv_fd; //接收管道
     int send_fd; //发送管道
+    struct socket *slot[MAX_SOCKET]; //socket列表
 };
 
 struct request_listen
@@ -40,7 +53,7 @@ struct request_accept
 
 struct request_send
 {
-    char *data;
+    int fd;
 };
 
 struct request_package
@@ -57,3 +70,4 @@ struct request_package
 };
 
 PyObject *PyInit_network();
+bool create_socket_server();
