@@ -47,7 +47,7 @@ static void listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
                         struct sockaddr *sa, int socklen, void *user_data)
 {
     struct event_base *base = user_data;
-    printf("accept fd:%d", fd);
+    printf("accept fd:%d\n", fd);
     struct bufferevent *client_bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
     if (!client_bev)
     {
@@ -61,6 +61,13 @@ static void listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
     s->fd = fd;
     s->client_bev = client_bev;
     SOCKET_SERVER->slot[fd] = s;
+    struct bluesky_message smsg;
+    smsg.type = ACCEPTED;
+    struct accept_message ac_msg;
+    ac_msg.fd = fd;
+    smsg.data = &ac_msg;
+    skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
+    pthread_cond_signal(&BLUE_SKYSERVER->cond);
 }
 
 static void do_listen(struct request_listen *listen)

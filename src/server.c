@@ -34,6 +34,13 @@ static PyObject *py_start(PyObject *self, PyObject *args)
                 PyObject_CallObject(get_socket_server()->data_recv_cb, arglist);
                 Py_DECREF(arglist);
             }
+            if (msg.type == ACCEPTED)
+            {
+                struct accept_message *ac_msg = (struct accept_message *)msg.data;
+                PyObject *arglist = Py_BuildValue("(is)", ac_msg->fd, &ac_msg->addr);
+                PyObject_CallObject(get_socket_server()->accept_cb, arglist);
+                Py_DECREF(arglist);
+            }
         }
         else
         {

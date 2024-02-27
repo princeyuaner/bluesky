@@ -1,7 +1,7 @@
 import bluesky
 
-def AcceptCB():
-    pass
+def AcceptCB(fd,addr):
+    print("有新的连接",fd,addr)
 
 def OnDisconnectCB():
     pass

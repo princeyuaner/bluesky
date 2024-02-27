@@ -17,7 +17,7 @@ struct bluesky_message
 struct accept_message
 {
 	int fd;
-	char *addr;
+	void *addr;
 	int port;
 };
 
