@@ -23,25 +23,24 @@
 #include <jemalloc.h>
 #include <spinlock.h>
 
-#define MAX_SOCKET (1<<16)
+#define MAX_SOCKET (1 << 16)
 
 struct socket
 {
     int fd;
     struct spinlock dw_lock;
-    const void * dw_buffer;
+    const void *dw_buffer;
     struct bufferevent *client_bev;
 };
 
-
 struct socket_server
 {
-    int recv_fd; //接收管道
-    int send_fd; //发送管道
-    struct socket *slot[MAX_SOCKET]; //socket列表
-    PyObject *accept_cb;  //连接回调
-    PyObject *disconnect_cb; //断开连接回调
-    PyObject *data_recv_cb; //接收数据回调
+    int recv_fd;                     // 接收管道
+    int send_fd;                     // 发送管道
+    struct socket *slot[MAX_SOCKET]; // socket列表
+    PyObject *accept_cb;             // 连接回调
+    PyObject *disconnect_cb;         // 断开连接回调
+    PyObject *data_recv_cb;          // 接收数据回调
 };
 
 struct request_listen
@@ -71,7 +70,6 @@ struct request_package
     } u;
     uint8_t dummy[256];
 };
-
 
 bool create_socket_server();
 

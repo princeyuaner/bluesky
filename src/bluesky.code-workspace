@@ -12,6 +12,9 @@
 			"evbuffer-internal.h": "c",
 			"util.h": "c",
 			"assert.h": "c"
-		}
+		},
+		"files.autoSave": "afterDelay",
+		"editor.defaultFormatter": "ms-vscode.cpptools",
+		"editor.formatOnSave": true
 	}
 }

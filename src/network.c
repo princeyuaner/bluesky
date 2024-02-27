@@ -28,10 +28,10 @@ static void conn_readcb(struct bufferevent *bev, void *arg)
     size_t totalLen = evbuffer_get_length(input);
     char buf[totalLen];
     bzero(buf, sizeof(buf));
-    bufferevent_read(bev, buf,totalLen);
-    printf("receive data:%s, size:%d\n", buf,(int)totalLen);
+    bufferevent_read(bev, buf, totalLen);
+    printf("receive data:%s, size:%d\n", buf, (int)totalLen);
     struct skynet_message smsg;
-    skynet_mq_push(BLUE_SKYSERVER->queue,&smsg);
+    skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
     pthread_cond_signal(&BLUE_SKYSERVER->cond);
 }
 
@@ -103,15 +103,15 @@ static void pipe_read(int fd, short which, void *args)
         do_listen((struct request_listen *)buffer);
         break;
     case 'S':
+    {
+        struct request_send *send = (struct request_send *)buffer;
+        struct socket *socket = SOCKET_SERVER->slot[send->fd];
+        if (socket != NULL)
         {
-            struct request_send * send = (struct request_send *)buffer;
-            struct socket *socket =  SOCKET_SERVER->slot[send->fd];
-            if(socket != NULL)
-            {
-                bufferevent_enable(socket->client_bev, EV_WRITE);
-            }
-            break;
+            bufferevent_enable(socket->client_bev, EV_WRITE);
         }
+        break;
+    }
     default:
         return;
     };
@@ -186,7 +186,7 @@ static PyObject *network_init(PyObject *self, PyObject *args)
     PyObject *disconnect_cd;
     PyObject *data_recv_cb;
 
-    if (PyArg_ParseTuple(args, "OOO", &accept_cb, &disconnect_cd,&data_recv_cb))
+    if (PyArg_ParseTuple(args, "OOO", &accept_cb, &disconnect_cd, &data_recv_cb))
     {
         if (!PyCallable_Check(accept_cb))
         {
@@ -203,16 +203,16 @@ static PyObject *network_init(PyObject *self, PyObject *args)
             PyErr_SetString(PyExc_TypeError, "data_recv_cb must be callable");
             Py_RETURN_NONE;
         }
-        Py_XINCREF(accept_cb);        /* Add a reference to new callback */
-        SOCKET_SERVER->accept_cb = accept_cb;      /* Remember new callback */
+        Py_XINCREF(accept_cb);                /* Add a reference to new callback */
+        SOCKET_SERVER->accept_cb = accept_cb; /* Remember new callback */
 
-        Py_XINCREF(disconnect_cd);   /* Add a reference to new callback */
+        Py_XINCREF(disconnect_cd);                    /* Add a reference to new callback */
         SOCKET_SERVER->disconnect_cb = disconnect_cd; /* Remember new callback */
 
-        Py_XINCREF(data_recv_cb);   /* Add a reference to new callback */
+        Py_XINCREF(data_recv_cb);                   /* Add a reference to new callback */
         SOCKET_SERVER->data_recv_cb = data_recv_cb; /* Remember new callback */
     }
-    
+
     pthread_t sokcet_t;
     pthread_create(&sokcet_t, NULL, new_socket_event, NULL);
     Py_RETURN_NONE;
