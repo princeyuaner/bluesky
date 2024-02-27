@@ -3,6 +3,7 @@
 #include <skynet_mq.h>
 #include <jemalloc.h>
 #include <pthread.h>
+#include <network.h>
 
 void create_bluesky_server()
 {
@@ -23,11 +24,16 @@ static PyObject *py_start(PyObject *self, PyObject *args)
     create_bluesky_server();
     while (true)
     {
-        struct skynet_message msg;
+        struct bluesky_message msg;
         int ret = skynet_mq_pop(BLUE_SKYSERVER->queue, &msg);
         if (ret == 0)
         {
-            printf("收到消息\n");
+            if (msg.type == RECV_DATA)
+            {
+                PyObject *arglist = Py_BuildValue("(s)", msg.data);
+                PyObject_CallObject(get_socket_server()->data_recv_cb, arglist);
+                Py_DECREF(arglist);
+            }
         }
         else
         {

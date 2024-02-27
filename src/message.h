@@ -1,13 +1,24 @@
 #ifndef MESSAGE_H
 #define MESSAGE_H
 
-#include <define.h>
+enum MESSAGE_TYPE
+{
+	RECV_DATA,
+	ACCEPTED,
+};
 
 struct bluesky_message
 {
-	message_type type;
+	enum MESSAGE_TYPE type;
 	void *data;
 	size_t sz;
+};
+
+struct accept_message
+{
+	int fd;
+	char *addr;
+	int port;
 };
 
 #endif

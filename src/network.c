@@ -2,6 +2,7 @@
 #include <skynet_mq.h>
 #include <server.h>
 #include <pthread.h>
+#include <message.h>
 
 static struct socket_server *SOCKET_SERVER = NULL;
 static struct event_base *SOCKET_BASE = NULL;
@@ -30,7 +31,9 @@ static void conn_readcb(struct bufferevent *bev, void *arg)
     bzero(buf, sizeof(buf));
     bufferevent_read(bev, buf, totalLen);
     printf("receive data:%s, size:%d\n", buf, (int)totalLen);
-    struct skynet_message smsg;
+    struct bluesky_message smsg;
+    smsg.type = RECV_DATA;
+    smsg.data = &buf;
     skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
     pthread_cond_signal(&BLUE_SKYSERVER->cond);
 }
@@ -229,6 +232,11 @@ bool create_socket_server()
     SOCKET_SERVER->recv_fd = fd[0];
     SOCKET_SERVER->send_fd = fd[1];
     return true;
+}
+
+struct socket_server *get_socket_server()
+{
+    return SOCKET_SERVER;
 }
 
 static PyMethodDef network_methods[] = {

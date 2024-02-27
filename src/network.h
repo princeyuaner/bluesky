@@ -72,5 +72,6 @@ struct request_package
 };
 
 bool create_socket_server();
+struct socket_server *get_socket_server();
 
 PyObject *PyInit_network();

@@ -3,7 +3,6 @@
 
 #include <skynet_mq.h>
 #include <Python.h>
-#include <define.h>
 
 struct bluesky_server
 {
