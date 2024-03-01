@@ -20,6 +20,7 @@ void skynet_mq_release(struct message_queue *q, message_drop drop_func, void *ud
 
 // 0 for success
 int skynet_mq_pop(struct message_queue *q, struct bluesky_message *message);
+int skynet_mq_top(struct message_queue *q, struct bluesky_message *message);
 void skynet_mq_push(struct message_queue *q, struct bluesky_message *message);
 
 // return the length of message queue, for debug

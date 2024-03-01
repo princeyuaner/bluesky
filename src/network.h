@@ -31,6 +31,7 @@ struct socket
     struct spinlock dw_lock;
     const void *dw_buffer;
     struct bufferevent *client_bev;
+    struct message_queue *message_queue;
 };
 
 struct socket_server

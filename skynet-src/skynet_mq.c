@@ -28,7 +28,6 @@ struct message_queue
 	int overload;
 	int overload_threshold;
 	struct bluesky_message *queue;
-	struct message_queue *next;
 };
 
 struct message_queue *
@@ -47,7 +46,6 @@ skynet_mq_create()
 	q->overload = 0;
 	q->overload_threshold = MQ_OVERLOAD;
 	q->queue = je_malloc(sizeof(struct bluesky_message) * q->cap);
-	q->next = NULL;
 
 	return q;
 }
@@ -55,7 +53,6 @@ skynet_mq_create()
 static void
 _release(struct message_queue *q)
 {
-	assert(q->next == NULL);
 	SPIN_DESTROY(q)
 	je_free(q->queue);
 	je_free(q);
@@ -126,6 +123,22 @@ int skynet_mq_pop(struct message_queue *q, struct bluesky_message *message)
 	if (ret)
 	{
 		q->in_global = 0;
+	}
+
+	SPIN_UNLOCK(q)
+
+	return ret;
+}
+
+int skynet_mq_top(struct message_queue *q, struct bluesky_message *message)
+{
+	int ret = 1;
+	SPIN_LOCK(q)
+
+	if (q->head != q->tail)
+	{
+		*message = q->queue[q->head++];
+		ret = 0;
 	}
 
 	SPIN_UNLOCK(q)

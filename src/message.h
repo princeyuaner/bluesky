@@ -5,6 +5,7 @@ enum MESSAGE_TYPE
 {
 	RECV_DATA,
 	ACCEPTED,
+	WRITE_DATA,
 };
 
 struct bluesky_message
@@ -16,9 +17,20 @@ struct bluesky_message
 
 struct accept_message
 {
-	int fd;
-	void *addr;
+	size_t fd;
+	char *addr;
 	int port;
+};
+
+struct recv_data_message
+{
+	size_t fd;
+	char *data;
+};
+
+struct write_data_message
+{
+	char *data;
 };
 
 #endif

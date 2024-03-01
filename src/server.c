@@ -30,14 +30,15 @@ static PyObject *py_start(PyObject *self, PyObject *args)
         {
             if (msg.type == RECV_DATA)
             {
-                PyObject *arglist = Py_BuildValue("(s)", msg.data);
+                struct recv_data_message *recv_data_msg = (struct recv_data_message *)msg.data;
+                PyObject *arglist = Py_BuildValue("(is)", recv_data_msg->fd, recv_data_msg->data);
                 PyObject_CallObject(get_socket_server()->data_recv_cb, arglist);
                 Py_DECREF(arglist);
             }
             if (msg.type == ACCEPTED)
             {
                 struct accept_message *ac_msg = (struct accept_message *)msg.data;
-                PyObject *arglist = Py_BuildValue("(is)", ac_msg->fd, &ac_msg->addr);
+                PyObject *arglist = Py_BuildValue("(i)", ac_msg->fd);
                 PyObject_CallObject(get_socket_server()->accept_cb, arglist);
                 Py_DECREF(arglist);
             }

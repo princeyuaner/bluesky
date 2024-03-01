@@ -28,19 +28,42 @@ static void conn_readcb(struct bufferevent *bev, void *arg)
     struct evbuffer *input = bufferevent_get_input(bev);
     size_t totalLen = evbuffer_get_length(input);
     char buf[totalLen];
-    bzero(buf, sizeof(buf));
     bufferevent_read(bev, buf, totalLen);
-    printf("receive data:%s, size:%d\n", buf, (int)totalLen);
+    printf("receive data:%s, size1:%d\n", buf, (int)totalLen);
     struct bluesky_message smsg;
     smsg.type = RECV_DATA;
-    smsg.data = &buf;
+    struct recv_data_message recv_data_msg;
+    recv_data_msg.fd = bev->ev_read.ev_fd;
+    recv_data_msg.data = buf;
+    smsg.data = &recv_data_msg;
     skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
     pthread_cond_signal(&BLUE_SKYSERVER->cond);
 }
 
 static void conn_writecb(struct bufferevent *bev, void *arg)
 {
-    return;
+    struct socket *s = SOCKET_SERVER->slot[bev->ev_read.ev_fd];
+    struct bluesky_message message;
+    if (skynet_mq_top(s->message_queue, &message) == 1)
+    {
+        // 没有数据要发送，取消监听
+        bufferevent_disable(bev, EV_WRITE);
+    }
+    else
+    {
+        int result = bufferevent_write(bev, message.data, strlen(message.data));
+        printf("写数据 %s %d %d\n", (char *)message.data, (int)strlen(message.data), result);
+        if (result == 0)
+        {
+            printf("写数据成功\n");
+            skynet_mq_pop(s->message_queue, &message);
+            // if (skynet_mq_length(s->message_queue) == 0)
+            // {
+            //     // 没有数据要发送，取消监听
+            //     bufferevent_disable(bev, EV_WRITE);
+            // }
+        }
+    }
 }
 
 static void listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
@@ -60,12 +83,14 @@ static void listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct socket *s = je_malloc(sizeof(*s));
     s->fd = fd;
     s->client_bev = client_bev;
+    s->message_queue = skynet_mq_create();
     SOCKET_SERVER->slot[fd] = s;
     struct bluesky_message smsg;
     smsg.type = ACCEPTED;
     struct accept_message ac_msg;
     ac_msg.fd = fd;
     smsg.data = &ac_msg;
+    printf("地址1%p\n", &ac_msg);
     skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
     pthread_cond_signal(&BLUE_SKYSERVER->cond);
 }
@@ -112,10 +137,11 @@ static void pipe_read(int fd, short which, void *args)
         printf("do_listen\n");
         do_listen((struct request_listen *)buffer);
         break;
-    case 'S':
+    case 'W':
     {
         struct request_send *send = (struct request_send *)buffer;
         struct socket *socket = SOCKET_SERVER->slot[send->fd];
+        printf("增加写事件:%d\n", send->fd);
         if (socket != NULL)
         {
             bufferevent_enable(socket->client_bev, EV_WRITE);
@@ -167,12 +193,12 @@ send_request(struct request_package *request, char type, int len)
 
 static PyObject *py_listen(PyObject *self, PyObject *args)
 {
-    printf("py_listen");
+    printf("py_listen\n");
     char *ip;
     int port;
     if (!PyArg_ParseTuple(args, "si", &ip, &port))
     {
-        return NULL;
+        Py_RETURN_NONE;
     }
     struct request_package request;
     request.u.listen.port = port;
@@ -228,6 +254,28 @@ static PyObject *network_init(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyObject *network_write_data(PyObject *self, PyObject *args)
+{
+    printf("network_write_data\n");
+    int fd;
+    char *data;
+    if (!PyArg_ParseTuple(args, "is", &fd, &data))
+    {
+        Py_RETURN_NONE;
+    }
+    struct socket *s = SOCKET_SERVER->slot[fd];
+    // 将待发送的数据写入socket队列
+    struct bluesky_message smsg;
+    smsg.type = WRITE_DATA;
+    smsg.data = data;
+    skynet_mq_push(s->message_queue, &smsg);
+    // 推送管道提醒
+    struct request_package request;
+    request.u.send.fd = fd;
+    send_request(&request, 'W', sizeof(request.u.send));
+    Py_RETURN_NONE;
+}
+
 bool create_socket_server()
 {
     int fd[2];
@@ -249,6 +297,7 @@ struct socket_server *get_socket_server()
 static PyMethodDef network_methods[] = {
     {"init", (PyCFunction)network_init, METH_VARARGS, NULL},
     {"listen", (PyCFunction)py_listen, METH_VARARGS, NULL},
+    {"write_data", (PyCFunction)network_write_data, METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL}};
 
 static struct PyModuleDef network_module =
