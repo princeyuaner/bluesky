@@ -16,5 +16,3 @@ while True:
     print("111111111111")
     back_msg=sock.recv(1024)
     print(back_msg)
-    sock.sendall(message.encode())
-    time.sleep(0.1)

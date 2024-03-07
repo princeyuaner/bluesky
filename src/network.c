@@ -18,6 +18,11 @@ static void conn_eventcb(struct bufferevent *bev, short events, void *user_data)
         printf("Got an error on the connection: %s\n",
                strerror(errno)); /*XXX win32*/
     }
+    else if (events & BEV_EVENT_CONNECTED)
+    {
+        printf("服务器已连接\n");
+        return;
+    }
     /* None of the other events can happen here, since we haven't enabled
      * timeouts */
     bufferevent_free(bev);
@@ -27,7 +32,7 @@ static void conn_readcb(struct bufferevent *bev, void *arg)
 {
     struct evbuffer *input = bufferevent_get_input(bev);
     size_t totalLen = evbuffer_get_length(input);
-    char buf[totalLen];
+    char *buf = je_malloc(sizeof(*buf) * totalLen);
     bufferevent_read(bev, buf, totalLen);
     printf("receive data:%s, size1:%d\n", buf, (int)totalLen);
     struct bluesky_message smsg;
@@ -114,6 +119,24 @@ static void do_listen(struct request_listen *listen)
     }
 }
 
+static void do_connect(struct request_connect *connect)
+{
+    struct bufferevent *bev;
+    bev = bufferevent_socket_new(SOCKET_BASE, -1, BEV_OPT_CLOSE_ON_FREE);
+
+    // 连接服务器
+    struct sockaddr_in serv;
+    memset(&serv, 0, sizeof(serv));
+    serv.sin_family = AF_INET;
+    serv.sin_port = htons(connect->port);
+    evutil_inet_pton(AF_INET, connect->addr, &serv.sin_addr.s_addr);
+    bufferevent_socket_connect(bev, (struct sockaddr *)&serv, sizeof(serv));
+
+    // 设置回调
+    bufferevent_setcb(bev, conn_readcb, conn_writecb, conn_eventcb, NULL);
+    bufferevent_enable(bev, EV_READ | EV_PERSIST);
+}
+
 static void pipe_read(int fd, short which, void *args)
 {
     uint8_t buffer[256];
@@ -146,6 +169,12 @@ static void pipe_read(int fd, short which, void *args)
         {
             bufferevent_enable(socket->client_bev, EV_WRITE);
         }
+        break;
+    }
+    case 'C':
+    {
+        printf("do_connect\n");
+        do_connect((struct request_connect *)buffer);
         break;
     }
     default:
@@ -191,9 +220,9 @@ send_request(struct request_package *request, char type, int len)
     }
 }
 
-static PyObject *py_listen(PyObject *self, PyObject *args)
+static PyObject *network_listen(PyObject *self, PyObject *args)
 {
-    printf("py_listen\n");
+    printf("network_listen\n");
     char *ip;
     int port;
     if (!PyArg_ParseTuple(args, "si", &ip, &port))
@@ -276,6 +305,22 @@ static PyObject *network_write_data(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyObject *network_connect(PyObject *self, PyObject *args)
+{
+    printf("network_connect\n");
+    char *addr;
+    int port;
+    if (!PyArg_ParseTuple(args, "is", &addr, &port))
+    {
+        Py_RETURN_NONE;
+    }
+    struct request_package request;
+    request.u.connect.port = port;
+    request.u.connect.addr = addr;
+    send_request(&request, 'C', sizeof(request.u.send));
+    Py_RETURN_NONE;
+}
+
 bool create_socket_server()
 {
     int fd[2];
@@ -296,8 +341,9 @@ struct socket_server *get_socket_server()
 
 static PyMethodDef network_methods[] = {
     {"init", (PyCFunction)network_init, METH_VARARGS, NULL},
-    {"listen", (PyCFunction)py_listen, METH_VARARGS, NULL},
+    {"listen", (PyCFunction)network_listen, METH_VARARGS, NULL},
     {"write_data", (PyCFunction)network_write_data, METH_VARARGS, NULL},
+    {"connect", (PyCFunction)network_connect, METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL}};
 
 static struct PyModuleDef network_module =

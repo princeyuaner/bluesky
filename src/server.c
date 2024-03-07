@@ -33,6 +33,7 @@ static PyObject *py_start(PyObject *self, PyObject *args)
                 struct recv_data_message *recv_data_msg = (struct recv_data_message *)msg.data;
                 PyObject *arglist = Py_BuildValue("(is)", recv_data_msg->fd, recv_data_msg->data);
                 PyObject_CallObject(get_socket_server()->data_recv_cb, arglist);
+                je_free(recv_data_msg->data);
                 Py_DECREF(arglist);
             }
             if (msg.type == ACCEPTED)

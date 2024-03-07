@@ -59,6 +59,12 @@ struct request_send
     int fd;
 };
 
+struct request_connect
+{
+    int port;
+    char *addr;
+};
+
 struct request_package
 {
     uint8_t header[8]; // 6 bytes dummy
@@ -68,6 +74,7 @@ struct request_package
         struct request_listen listen;
         struct request_accept accept;
         struct request_send send;
+        struct request_connect connect;
     } u;
     uint8_t dummy[256];
 };

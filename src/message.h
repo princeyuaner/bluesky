@@ -33,4 +33,10 @@ struct write_data_message
 	char *data;
 };
 
+struct connect_message
+{
+	size_t port;
+	char *addr;
+};
+
 #endif
