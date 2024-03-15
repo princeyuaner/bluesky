@@ -24,24 +24,30 @@
 #include <spinlock.h>
 
 #define MAX_SOCKET (1 << 16)
+#define HASH_ID(id) (((unsigned)id) % MAX_SOCKET)
+
+#define SOCKET_TYPE_INVALID 0
+#define SOCKET_TYPE_RESERVE 1
 
 struct socket
 {
-    int fd;
+    uintptr_t fd;
+    int id;
+    int type;
     struct spinlock dw_lock;
-    const void *dw_buffer;
     struct bufferevent *client_bev;
     struct message_queue *message_queue;
 };
 
 struct socket_server
 {
-    int recv_fd;                     // 接收管道
-    int send_fd;                     // 发送管道
-    struct socket *slot[MAX_SOCKET]; // socket列表
-    PyObject *accept_cb;             // 连接回调
-    PyObject *disconnect_cb;         // 断开连接回调
-    PyObject *data_recv_cb;          // 接收数据回调
+    int recv_fd;                    // 接收管道
+    int send_fd;                    // 发送管道
+    struct socket slot[MAX_SOCKET]; // socket列表
+    PyObject *accept_cb;            // 连接回调
+    PyObject *disconnect_cb;        // 断开连接回调
+    PyObject *data_recv_cb;         // 接收数据回调
+    volatile int id;                // id分配
 };
 
 struct request_listen
@@ -49,20 +55,16 @@ struct request_listen
     int port;
 };
 
-struct request_accept
-{
-    int fd;
-};
-
 struct request_send
 {
-    int fd;
+    int id;
 };
 
 struct request_connect
 {
     int port;
     char *addr;
+    int id;
 };
 
 struct request_package
@@ -72,7 +74,6 @@ struct request_package
     {
         char buffer[256];
         struct request_listen listen;
-        struct request_accept accept;
         struct request_send send;
         struct request_connect connect;
     } u;
@@ -81,5 +82,6 @@ struct request_package
 
 bool create_socket_server();
 struct socket_server *get_socket_server();
+int make_id(struct socket_server *ss);
 
 PyObject *PyInit_network();

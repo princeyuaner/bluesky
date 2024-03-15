@@ -4,12 +4,24 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <message.h>
+#include <spinlock.h>
 
 // type is encoding in skynet_message.sz high 8bit
 #define MESSAGE_TYPE_MASK (SIZE_MAX >> 8)
 #define MESSAGE_TYPE_SHIFT ((sizeof(size_t) - 1) * 8)
 
-struct message_queue;
+struct message_queue
+{
+    struct spinlock lock;
+    int cap;
+    int head;
+    int tail;
+    int release;
+    int in_global;
+    int overload;
+    int overload_threshold;
+    struct bluesky_message *queue;
+};
 
 struct message_queue *skynet_mq_create();
 void skynet_mq_mark_release(struct message_queue *q);

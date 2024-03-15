@@ -3,6 +3,7 @@
 #include <server.h>
 #include <pthread.h>
 #include <message.h>
+#include <stddef.h>
 
 static struct socket_server *SOCKET_SERVER = NULL;
 static struct event_base *SOCKET_BASE = NULL;
@@ -20,7 +21,7 @@ static void conn_eventcb(struct bufferevent *bev, short events, void *user_data)
     }
     else if (events & BEV_EVENT_CONNECTED)
     {
-        printf("服务器已连接\n");
+        printf("服务器已连接1\n");
         return;
     }
     /* None of the other events can happen here, since we haven't enabled
@@ -30,15 +31,16 @@ static void conn_eventcb(struct bufferevent *bev, short events, void *user_data)
 
 static void conn_readcb(struct bufferevent *bev, void *arg)
 {
+    struct socket *s = (struct socket *)arg;
     struct evbuffer *input = bufferevent_get_input(bev);
     size_t totalLen = evbuffer_get_length(input);
     char *buf = je_malloc(sizeof(*buf) * totalLen);
     bufferevent_read(bev, buf, totalLen);
-    printf("receive data:%s, size1:%d\n", buf, (int)totalLen);
+    printf("receive data:%s, size1:%d id:%d\n", buf, (int)totalLen, s->id);
     struct bluesky_message smsg;
     smsg.type = RECV_DATA;
     struct recv_data_message recv_data_msg;
-    recv_data_msg.fd = bev->ev_read.ev_fd;
+    recv_data_msg.id = s->id;
     recv_data_msg.data = buf;
     smsg.data = &recv_data_msg;
     skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
@@ -47,7 +49,7 @@ static void conn_readcb(struct bufferevent *bev, void *arg)
 
 static void conn_writecb(struct bufferevent *bev, void *arg)
 {
-    struct socket *s = SOCKET_SERVER->slot[bev->ev_read.ev_fd];
+    struct socket *s = (struct socket *)arg;
     struct bluesky_message message;
     if (skynet_mq_top(s->message_queue, &message) == 1)
     {
@@ -75,7 +77,6 @@ static void listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
                         struct sockaddr *sa, int socklen, void *user_data)
 {
     struct event_base *base = user_data;
-    printf("accept fd:%d\n", fd);
     struct bufferevent *client_bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
     if (!client_bev)
     {
@@ -83,19 +84,21 @@ static void listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
         event_base_loopbreak(base);
         return;
     }
-    bufferevent_setcb(client_bev, conn_readcb, conn_writecb, conn_eventcb, NULL);
+    int id = make_id(SOCKET_SERVER);
+    struct socket *s = &SOCKET_SERVER->slot[HASH_ID(id)];
+    printf("accept fd:%d id:%d\n", fd, id);
+    bufferevent_setcb(client_bev, conn_readcb, conn_writecb, conn_eventcb, s);
+    printf("accept fd:%d id:%d\n", fd, id);
     bufferevent_enable(client_bev, EV_READ);
-    struct socket *s = je_malloc(sizeof(*s));
+    printf("accept fd:%d id:%d\n", fd, id);
     s->fd = fd;
+    s->id = id;
     s->client_bev = client_bev;
-    s->message_queue = skynet_mq_create();
-    SOCKET_SERVER->slot[fd] = s;
     struct bluesky_message smsg;
     smsg.type = ACCEPTED;
-    struct accept_message ac_msg;
-    ac_msg.fd = fd;
-    smsg.data = &ac_msg;
-    printf("地址1%p\n", &ac_msg);
+    struct accept_message *ac_msg = je_malloc(sizeof(*ac_msg));
+    ac_msg->id = s->id;
+    smsg.data = ac_msg;
     skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
     pthread_cond_signal(&BLUE_SKYSERVER->cond);
 }
@@ -133,7 +136,7 @@ static void do_connect(struct request_connect *connect)
     bufferevent_socket_connect(bev, (struct sockaddr *)&serv, sizeof(serv));
 
     // 设置回调
-    bufferevent_setcb(bev, conn_readcb, conn_writecb, conn_eventcb, NULL);
+    bufferevent_setcb(bev, conn_readcb, conn_writecb, conn_eventcb, &connect->id);
     bufferevent_enable(bev, EV_READ | EV_PERSIST);
 }
 
@@ -163,8 +166,8 @@ static void pipe_read(int fd, short which, void *args)
     case 'W':
     {
         struct request_send *send = (struct request_send *)buffer;
-        struct socket *socket = SOCKET_SERVER->slot[send->fd];
-        printf("增加写事件:%d\n", send->fd);
+        struct socket *socket = &SOCKET_SERVER->slot[HASH_ID(send->id)];
+        printf("增加写事件:%d\n", send->id);
         if (socket != NULL)
         {
             bufferevent_enable(socket->client_bev, EV_WRITE);
@@ -286,13 +289,13 @@ static PyObject *network_init(PyObject *self, PyObject *args)
 static PyObject *network_write_data(PyObject *self, PyObject *args)
 {
     printf("network_write_data\n");
-    int fd;
+    int id;
     char *data;
-    if (!PyArg_ParseTuple(args, "is", &fd, &data))
+    if (!PyArg_ParseTuple(args, "is", &id, &data))
     {
         Py_RETURN_NONE;
     }
-    struct socket *s = SOCKET_SERVER->slot[fd];
+    struct socket *s = &SOCKET_SERVER->slot[HASH_ID(id)];
     // 将待发送的数据写入socket队列
     struct bluesky_message smsg;
     smsg.type = WRITE_DATA;
@@ -300,7 +303,7 @@ static PyObject *network_write_data(PyObject *self, PyObject *args)
     skynet_mq_push(s->message_queue, &smsg);
     // 推送管道提醒
     struct request_package request;
-    request.u.send.fd = fd;
+    request.u.send.id = id;
     send_request(&request, 'W', sizeof(request.u.send));
     Py_RETURN_NONE;
 }
@@ -314,11 +317,14 @@ static PyObject *network_connect(PyObject *self, PyObject *args)
     {
         Py_RETURN_NONE;
     }
+    int id = make_id(SOCKET_SERVER);
     struct request_package request;
     request.u.connect.port = port;
     request.u.connect.addr = addr;
+    request.u.connect.id = id;
     send_request(&request, 'C', sizeof(request.u.send));
-    Py_RETURN_NONE;
+    PyObject *ret = Py_BuildValue("(i)", id);
+    return ret;
 }
 
 bool create_socket_server()
@@ -331,12 +337,41 @@ bool create_socket_server()
     SOCKET_SERVER = je_malloc(sizeof(*SOCKET_SERVER));
     SOCKET_SERVER->recv_fd = fd[0];
     SOCKET_SERVER->send_fd = fd[1];
+    SOCKET_SERVER->id = 0;
+
+    for (int i = 0; i < MAX_SOCKET; i++)
+    {
+        struct socket *s = &SOCKET_SERVER->slot[i];
+        s->type = SOCKET_TYPE_INVALID;
+        s->message_queue = skynet_mq_create();
+    }
     return true;
 }
 
 struct socket_server *get_socket_server()
 {
     return SOCKET_SERVER;
+}
+
+int make_id(struct socket_server *ss)
+{
+    for (int i = 0; i < MAX_SOCKET; i++)
+    {
+        int id = __sync_add_and_fetch(&(ss->id), 1);
+        printf("make_id %d\n", id);
+        if (id < 0)
+        {
+            id = __sync_and_and_fetch(&(ss->id), 0x7fffffff);
+        }
+        struct socket *s = &ss->slot[HASH_ID(id)];
+        if (__sync_bool_compare_and_swap(&s->type, SOCKET_TYPE_INVALID, SOCKET_TYPE_RESERVE))
+        {
+            s->id = id;
+            s->fd = -1;
+            return id;
+        }
+    }
+    return -1;
 }
 
 static PyMethodDef network_methods[] = {

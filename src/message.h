@@ -17,14 +17,14 @@ struct bluesky_message
 
 struct accept_message
 {
-	size_t fd;
+	int id;
 	char *addr;
 	int port;
 };
 
 struct recv_data_message
 {
-	size_t fd;
+	int id;
 	char *data;
 };
 

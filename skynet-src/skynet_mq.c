@@ -17,19 +17,6 @@
 #define MQ_IN_GLOBAL 1
 #define MQ_OVERLOAD 1024
 
-struct message_queue
-{
-	struct spinlock lock;
-	int cap;
-	int head;
-	int tail;
-	int release;
-	int in_global;
-	int overload;
-	int overload_threshold;
-	struct bluesky_message *queue;
-};
-
 struct message_queue *
 skynet_mq_create()
 {
