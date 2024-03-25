@@ -1,10 +1,12 @@
 #include <network.h>
 #include <server.h>
+#include <bluesky_timer.h>
 
 static int bluesky_exec(PyObject *module)
 {
     PyModule_AddObject(module, "network", PyInit_network());
     PyModule_AddObject(module, "server", PyInit_server());
+    PyModule_AddObject(module, "timer", PyInit_timer());
     return 0;
 }
 
