@@ -66,13 +66,13 @@ static void add_node(struct timer* T, struct timer_node* node)
     }
 }
 
-static void timer_add(struct timer* T, int time)
+static void timer_add(struct timer* T, int interval)
 {
     struct timer_node* node = (struct timer_node*)je_malloc(sizeof(*node));
 
     SPIN_LOCK(T);
 
-    node->expire_time = time + T->time;
+    node->expire_time = interval + T->time;
     add_node(T, node);
 
     SPIN_UNLOCK(T);
@@ -81,9 +81,22 @@ static void timer_add(struct timer* T, int time)
 static PyObject* timer_once(PyObject* self, PyObject* args)
 {
     PyObject* timer_cb;
-    int interval;
+    uint32_t interval;
 
     if (PyArg_ParseTuple(args, "iO", &interval, &timer_cb))
+    {
+        timer_add(TIMER, interval);
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* timer_cycle(PyObject* self, PyObject* args)
+{
+    PyObject* timer_cb;
+    uint32_t start;
+    uint32_t interval;
+
+    if (PyArg_ParseTuple(args, "iiO",&start, &interval, &timer_cb))
     {
     }
     Py_RETURN_NONE;
@@ -91,6 +104,7 @@ static PyObject* timer_once(PyObject* self, PyObject* args)
 
 static PyMethodDef timer_methods[] = {
     {"timerOnce", (PyCFunction)timer_once, METH_VARARGS, NULL},
+    {"timerCycle", (PyCFunction)timer_cycle, METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL} };
 
 static struct PyModuleDef timer_module =
