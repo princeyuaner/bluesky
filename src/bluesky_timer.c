@@ -83,7 +83,7 @@ static void timer_add(struct timer* T, int interval)
     SPIN_UNLOCK(T);
 }
 
-static void timer_cb_add(struct timer* T, uint32_t start, uint32_t interval, bool cycle, PyObject* cb)
+static uint32_t timer_cb_add(struct timer* T, uint32_t start, uint32_t interval, bool cycle, PyObject* cb)
 {
     struct timer_cb_node* node = (struct timer_cb_node*)je_malloc(sizeof(*node));
     memset(node, 0, sizeof(*node));
@@ -106,6 +106,7 @@ static void timer_cb_add(struct timer* T, uint32_t start, uint32_t interval, boo
         slotList.tail->next = node;
         slotList.tail = node;
     }
+    return node->id;
 }
 
 static PyObject* timer_once(PyObject* self, PyObject* args)
@@ -115,8 +116,10 @@ static PyObject* timer_once(PyObject* self, PyObject* args)
 
     if (PyArg_ParseTuple(args, "iO", &interval, &timer_cb))
     {
-        timer_cb_add(TIMER, 0, interval, false,timer_cb);
+        uint32_t timer_id =  timer_cb_add(TIMER, 0, interval, false,timer_cb);
         timer_add(TIMER, interval);
+        PyObject* arglist = Py_BuildValue("(i)", timer_id);
+        return arglist;
     }
     Py_RETURN_NONE;
 }
@@ -129,8 +132,10 @@ static PyObject* timer_cycle(PyObject* self, PyObject* args)
 
     if (PyArg_ParseTuple(args, "iiO",&start, &interval, &timer_cb))
     {
-        timer_cb_add(TIMER, start, interval, true, timer_cb);
+        uint32_t timer_id = timer_cb_add(TIMER, start, interval, true, timer_cb);
         timer_add(TIMER, interval);
+        PyObject* arglist = Py_BuildValue("(i)", timer_id);
+        return arglist;
     }
     Py_RETURN_NONE;
 }
