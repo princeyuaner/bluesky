@@ -33,6 +33,7 @@ struct timer_cb_node
     uint32_t start;
     uint32_t interval;
     bool cycle;
+    PyObject* cb;
 };
 
 struct timer_cb_list

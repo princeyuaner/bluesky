@@ -83,7 +83,7 @@ static void timer_add(struct timer* T, int interval)
     SPIN_UNLOCK(T);
 }
 
-static void timer_cb_add(struct timer* T, uint32_t start, uint32_t interval, bool cycle)
+static void timer_cb_add(struct timer* T, uint32_t start, uint32_t interval, bool cycle, PyObject* cb)
 {
     struct timer_cb_node* node = (struct timer_cb_node*)je_malloc(sizeof(*node));
     memset(node, 0, sizeof(*node));
@@ -91,6 +91,8 @@ static void timer_cb_add(struct timer* T, uint32_t start, uint32_t interval, boo
     node->interval = interval;
     node->start = start;
     node->cycle = cycle;
+    node->cb = cb;
+    Py_XINCREF(cb);
     uint32_t slot = node->id & (TIMER_CB_SLOT - 1);
     struct timer_cb_list slotList = T->timer_cb[slot];
     if (slotList.head == NULL)
@@ -113,7 +115,7 @@ static PyObject* timer_once(PyObject* self, PyObject* args)
 
     if (PyArg_ParseTuple(args, "iO", &interval, &timer_cb))
     {
-        timer_cb_add(TIMER, 0, interval, false);
+        timer_cb_add(TIMER, 0, interval, false,timer_cb);
         timer_add(TIMER, interval);
     }
     Py_RETURN_NONE;
@@ -127,7 +129,7 @@ static PyObject* timer_cycle(PyObject* self, PyObject* args)
 
     if (PyArg_ParseTuple(args, "iiO",&start, &interval, &timer_cb))
     {
-        timer_cb_add(TIMER, start, interval, true);
+        timer_cb_add(TIMER, start, interval, true, timer_cb);
         timer_add(TIMER, interval);
     }
     Py_RETURN_NONE;
@@ -164,6 +166,7 @@ static PyObject* timer_cancel(PyObject* self, PyObject* args)
                 je_free(node);
                 break;
             }
+            Py_XDECREF(node->cb);
             node = node->next;
         }
     }
