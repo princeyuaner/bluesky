@@ -16,7 +16,7 @@ struct timer_node
 {
     struct timer_node *next;
     uint32_t expire_time;
-    uint32_t id;
+    uint32_t timer_id;
 };
 
 struct timer_list

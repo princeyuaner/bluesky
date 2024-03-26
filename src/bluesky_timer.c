@@ -71,13 +71,14 @@ static void add_node(struct timer* T, struct timer_node* node)
     }
 }
 
-static void timer_add(struct timer* T, int interval)
+static void timer_add(struct timer* T, int interval,uint32_t timer_id)
 {
     struct timer_node* node = (struct timer_node*)je_malloc(sizeof(*node));
 
     SPIN_LOCK(T);
 
     node->expire_time = interval + T->time;
+    node->timer_id = timer_id;
     add_node(T, node);
 
     SPIN_UNLOCK(T);
@@ -117,7 +118,7 @@ static PyObject* timer_once(PyObject* self, PyObject* args)
     if (PyArg_ParseTuple(args, "iO", &interval, &timer_cb))
     {
         uint32_t timer_id =  timer_cb_add(TIMER, 0, interval, false,timer_cb);
-        timer_add(TIMER, interval);
+        timer_add(TIMER, interval,timer_id);
         PyObject* arglist = Py_BuildValue("(i)", timer_id);
         return arglist;
     }
@@ -133,7 +134,7 @@ static PyObject* timer_cycle(PyObject* self, PyObject* args)
     if (PyArg_ParseTuple(args, "iiO",&start, &interval, &timer_cb))
     {
         uint32_t timer_id = timer_cb_add(TIMER, start, interval, true, timer_cb);
-        timer_add(TIMER, interval);
+        timer_add(TIMER, interval, timer_id);
         PyObject* arglist = Py_BuildValue("(i)", timer_id);
         return arglist;
     }
