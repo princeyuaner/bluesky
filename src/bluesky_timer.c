@@ -163,10 +163,10 @@ static PyObject* timer_cancel(PyObject* self, PyObject* args)
                 {
                     slotList.tail = node->last;
                 }
+                Py_XDECREF(node->cb);
                 je_free(node);
                 break;
             }
-            Py_XDECREF(node->cb);
             node = node->next;
         }
     }
