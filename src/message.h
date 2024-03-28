@@ -39,4 +39,9 @@ struct connect_message
 	char *addr;
 };
 
+struct timer_message
+{
+	uint32_t timer_id;
+};
+
 #endif

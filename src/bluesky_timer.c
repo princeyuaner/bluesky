@@ -1,5 +1,8 @@
 #include <bluesky_timer.h>
 #include <jemalloc.h>
+#include <message.h>
+#include <server.h>
+#include <skynet_mq.h>
 
 #include <time.h>
 #include <assert.h>
@@ -8,6 +11,8 @@
 #include <stdint.h>
 
 static struct timer *TIMER = NULL;
+static void move_list(struct timer* T, int level, int idx);
+static inline void dispatch_list(struct timer_node* current);
 
 static void systime(uint32_t *sec, uint32_t *cs)
 {
@@ -48,6 +53,80 @@ uint32_t make_timer_id(struct timer* T)
     return (T->id)++;
 }
 
+static inline struct timer_node* clear_list(struct timer_list* list)
+{
+    struct timer_node* ret = list->head;
+    list->head = NULL;
+    list->tail = NULL;
+    return ret;
+}
+
+static inline void execute_timer(struct timer* T)
+{
+    uint32_t idx = T->time & TIMER_SLOT_MASK;
+    if (T->timer[0][idx].head)
+    {
+        struct timer_node* current = clear_list(&T->timer[0][idx]);
+        SPIN_UNLOCK(T);
+        dispatch_list(current);
+        SPIN_LOCK(T);
+    }
+}
+
+static void shift_timer(struct timer* T)
+{
+    uint32_t ct = ++T->time;
+    if (ct == 0)
+    {
+        move_list(T, TIMER_TOTAL_LEVEL, 0);
+    }
+    else
+    {
+        int mask = TIMER_SLOT;
+        uint32_t time = ct >> TIMER_SLOT_SHIFT;
+        int i = 1;
+        while ((ct & (mask - 1)) == 0)
+        {
+            int idx = time & TIMER_SLOT_MASK;
+            if (idx != 0) {
+                move_list(T, i, idx);
+                break;
+            }
+            mask <<= TIMER_SLOT_SHIFT;
+            time >>= TIMER_SLOT_SHIFT;
+            ++i;
+        }
+    }
+}
+
+
+static void update_timer(struct timer* T) {
+    SPIN_LOCK(T);
+    execute_timer(TIMER);
+    shift_timer(TIMER);
+    execute_timer(TIMER);
+    SPIN_UNLOCK(T);
+}
+
+void update_time()
+{
+    uint64_t cp = gettime();
+    if (cp < TIMER->current_point)
+    {
+        TIMER->current_point = cp;
+    }
+    else if (cp > TIMER->current_point)
+    {
+        uint32_t diff = cp - TIMER->current_point;
+        TIMER->current_point = cp;
+        TIMER->current += diff;
+        for (uint32_t i = 0; i < diff; i++)
+        {
+            update_timer(TIMER);
+        }
+    }
+}
+
 
 static inline void add_to_list(struct timer_list* list, struct timer_node* node) {
     list->tail->next = node;
@@ -60,14 +139,22 @@ static void add_node(struct timer* T, struct timer_node* node)
     uint32_t expire_time = node->expire_time;
     uint32_t current_time = T->time;
     uint32_t mask = TIMER_SLOT;
-    for (int i = 0; i < 4; i++)
+    if (expire_time - current_time <= TIMER_SLOT)
+    {   
+        //time为0时情况特殊，单独拿出来判断
+        add_to_list(&T->timer[0][expire_time & (mask - 1)], node);
+    }
+    else
     {
-        if ((expire_time | (mask - 1)) == (current_time | (mask - 1)))
+        for (int i = 1; i < 4; i++)
         {
-            add_to_list(&T->timer[i][expire_time & (mask - 1)], node);
-            break;
+            if ((expire_time | (mask - 1)) == (current_time | (mask - 1)))
+            {
+                add_to_list(&T->timer[i][expire_time & (mask - 1)], node);
+                break;
+            }
+            mask <<= TIMER_SLOT_SHIFT;
         }
-        mask <<= TIMER_SLOT_SHIFT;
     }
 }
 
@@ -82,6 +169,16 @@ static void timer_add(struct timer* T, int interval,uint32_t timer_id)
     add_node(T, node);
 
     SPIN_UNLOCK(T);
+}
+
+
+static void move_list(struct timer* T, int level, int idx) {
+    struct timer_node* current = clear_list(&T->timer[level][idx]);
+    while (current) {
+        struct timer_node* temp = current->next;
+        add_node(T, current);
+        current = temp;
+    }
 }
 
 static uint32_t timer_cb_add(struct timer* T, uint32_t start, uint32_t interval, bool cycle, PyObject* cb)
@@ -108,6 +205,24 @@ static uint32_t timer_cb_add(struct timer* T, uint32_t start, uint32_t interval,
         slotList.tail = node;
     }
     return node->id;
+}
+
+
+
+static inline void dispatch_list(struct timer_node* current) 
+{
+    while (current)
+    {
+        struct bluesky_message smsg;
+        smsg.type = ACCEPTED;
+        struct timer_message* timer_msg = je_malloc(sizeof(*timer_msg));
+        timer_msg->timer_id = current->timer_id;
+        smsg.data = timer_msg;
+        skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
+        current = current->next;
+        
+    }
+    pthread_cond_signal(&BLUE_SKYSERVER->cond);
 }
 
 static PyObject* timer_once(PyObject* self, PyObject* args)
