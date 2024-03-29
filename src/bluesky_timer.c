@@ -174,7 +174,8 @@ static void timer_add(struct timer* T, int interval,uint32_t timer_id)
 
 static void move_list(struct timer* T, int level, int idx) {
     struct timer_node* current = clear_list(&T->timer[level][idx]);
-    while (current) {
+    while (current) 
+    {
         struct timer_node* temp = current->next;
         add_node(T, current);
         current = temp;
