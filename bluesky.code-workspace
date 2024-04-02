@@ -9,6 +9,9 @@
 		"editor.defaultFormatter": "ms-vscode.cpptools",
 		"files.associations": {
 			"spinlock.h": "c"
-		}
+		},
+		"C_Cpp.default.includePath": [
+			"Y:\\project\\bluesky\\**"
+		]
 	}
 }

@@ -4,6 +4,7 @@
 #include <jemalloc.h>
 #include <pthread.h>
 #include <network.h>
+#include <bluesky_timer.h>
 
 void create_bluesky_server()
 {
@@ -44,6 +45,21 @@ static PyObject *py_start(PyObject *self, PyObject *args)
                 PyObject_CallObject(get_socket_server()->accept_cb, arglist);
                 Py_DECREF(arglist);
                 je_free(ac_msg);
+            }
+            if (msg.type == TIME_OUT)
+            {
+                struct timer_message *timer_msg = (struct timer_message *)msg.data;
+                printf("timeout id:%d\n", timer_msg->timer_id);
+                struct timer_cb_node *cb_node = get_timer_cb_node(timer_msg->timer_id);
+                if (cb_node != NULL)
+                {
+                    printf("timeout1 id:%d\n", timer_msg->timer_id);
+                    PyObject_CallObject(cb_node->cb, NULL);
+                    if (cb_node->cycle)
+                    {
+                    }
+                }
+                je_free(timer_msg);
             }
         }
         else

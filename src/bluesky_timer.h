@@ -8,10 +8,11 @@
 #include <spinlock.h>
 #include <stdbool.h>
 
-#define TIMER_SLOT_SHIFT  8
+#define TIMER_SLOT_SHIFT 8
 #define TIMER_SLOT (1 << TIMER_SLOT_SHIFT)
 #define TIMER_SLOT_MASK (TIMER_SLOT - 1)
 #define TIMER_CB_SLOT (1 << 16)
+#define TIMER_CB_SLOT_MASK (TIMER_CB_SLOT - 1)
 #define TIMER_TOTAL_LEVEL 4
 
 struct timer_node
@@ -35,7 +36,7 @@ struct timer_cb_node
     uint32_t start;
     uint32_t interval;
     bool cycle;
-    PyObject* cb;
+    PyObject *cb;
 };
 
 struct timer_cb_list
@@ -57,9 +58,10 @@ struct timer
 };
 
 void init_timer(void);
-uint32_t make_timer_id(struct timer* T);
+uint32_t make_timer_id(struct timer *T);
 void update_time();
+struct timer_cb_node *get_timer_cb_node(uint32_t timer_id);
 
-PyObject* PyInit_timer();
+PyObject *PyInit_timer();
 
 #endif

@@ -11,8 +11,8 @@
 #include <stdint.h>
 
 static struct timer *TIMER = NULL;
-static void move_list(struct timer* T, int level, int idx);
-static inline void dispatch_list(struct timer_node* current);
+static void move_list(struct timer *T, int level, int idx);
+static inline void dispatch_list(struct timer_node *current);
 
 static void systime(uint32_t *sec, uint32_t *cs)
 {
@@ -36,6 +36,7 @@ static struct timer *create_timer()
 {
     struct timer *t = je_malloc(sizeof(*t));
     memset(t, 0, sizeof(*t));
+    SPIN_INIT(t);
     return t;
 }
 
@@ -48,32 +49,32 @@ void init_timer()
     TIMER->current_point = gettime();
 }
 
-uint32_t make_timer_id(struct timer* T)
+uint32_t make_timer_id(struct timer *T)
 {
-    return (T->id)++;
+    return ++(T->id);
 }
 
-static inline struct timer_node* clear_list(struct timer_list* list)
+static inline struct timer_node *clear_list(struct timer_list *list)
 {
-    struct timer_node* ret = list->head;
+    struct timer_node *ret = list->head;
     list->head = NULL;
     list->tail = NULL;
     return ret;
 }
 
-static inline void execute_timer(struct timer* T)
+static inline void execute_timer(struct timer *T)
 {
     uint32_t idx = T->time & TIMER_SLOT_MASK;
     if (T->timer[0][idx].head)
     {
-        struct timer_node* current = clear_list(&T->timer[0][idx]);
+        struct timer_node *current = clear_list(&T->timer[0][idx]);
         SPIN_UNLOCK(T);
         dispatch_list(current);
         SPIN_LOCK(T);
     }
 }
 
-static void shift_timer(struct timer* T)
+static void shift_timer(struct timer *T)
 {
     uint32_t ct = ++T->time;
     if (ct == 0)
@@ -88,7 +89,8 @@ static void shift_timer(struct timer* T)
         while ((ct & (mask - 1)) == 0)
         {
             int idx = time & TIMER_SLOT_MASK;
-            if (idx != 0) {
+            if (idx != 0)
+            {
                 move_list(T, i, idx);
                 break;
             }
@@ -99,8 +101,8 @@ static void shift_timer(struct timer* T)
     }
 }
 
-
-static void update_timer(struct timer* T) {
+static void update_timer(struct timer *T)
+{
     SPIN_LOCK(T);
     execute_timer(TIMER);
     shift_timer(TIMER);
@@ -127,30 +129,37 @@ void update_time()
     }
 }
 
-
-static inline void add_to_list(struct timer_list* list, struct timer_node* node) {
-    list->tail->next = node;
-    list->tail = node;
-    node->next = 0;
+static inline void add_to_list(struct timer_list *list, struct timer_node *node)
+{
+    if (list->head == NULL)
+    {
+        list->head = node;
+        list->tail = node;
+    }
+    else
+    {
+        list->tail->next = node;
+        list->tail = node;
+    }
 }
 
-static void add_node(struct timer* T, struct timer_node* node)
+static void add_node(struct timer *T, struct timer_node *node)
 {
     uint32_t expire_time = node->expire_time;
     uint32_t current_time = T->time;
     uint32_t mask = TIMER_SLOT;
-    if (expire_time - current_time <= TIMER_SLOT)
-    {   
-        //time为0时情况特殊，单独拿出来判断
-        add_to_list(&T->timer[0][expire_time & (mask - 1)], node);
+    if (expire_time - current_time < TIMER_SLOT)
+    {
+        add_to_list(&T->timer[0][expire_time & TIMER_SLOT_MASK], node);
     }
     else
     {
+        mask <<= TIMER_SLOT_SHIFT;
         for (int i = 1; i < 4; i++)
         {
             if ((expire_time | (mask - 1)) == (current_time | (mask - 1)))
             {
-                add_to_list(&T->timer[i][expire_time & (mask - 1)], node);
+                add_to_list(&T->timer[i][(expire_time >> (i * TIMER_SLOT_SHIFT)) & TIMER_SLOT_MASK], node);
                 break;
             }
             mask <<= TIMER_SLOT_SHIFT;
@@ -158,9 +167,10 @@ static void add_node(struct timer* T, struct timer_node* node)
     }
 }
 
-static void timer_add(struct timer* T, int interval,uint32_t timer_id)
+static void timer_add(struct timer *T, int interval, uint32_t timer_id)
 {
-    struct timer_node* node = (struct timer_node*)je_malloc(sizeof(*node));
+    struct timer_node *node = (struct timer_node *)je_malloc(sizeof(*node));
+    memset(node, 0, sizeof(*node));
 
     SPIN_LOCK(T);
 
@@ -171,20 +181,20 @@ static void timer_add(struct timer* T, int interval,uint32_t timer_id)
     SPIN_UNLOCK(T);
 }
 
-
-static void move_list(struct timer* T, int level, int idx) {
-    struct timer_node* current = clear_list(&T->timer[level][idx]);
-    while (current) 
+static void move_list(struct timer *T, int level, int idx)
+{
+    struct timer_node *current = clear_list(&T->timer[level][idx]);
+    while (current)
     {
-        struct timer_node* temp = current->next;
+        struct timer_node *temp = current->next;
         add_node(T, current);
         current = temp;
     }
 }
 
-static uint32_t timer_cb_add(struct timer* T, uint32_t start, uint32_t interval, bool cycle, PyObject* cb)
+static uint32_t timer_cb_add(struct timer *T, uint32_t start, uint32_t interval, bool cycle, PyObject *cb)
 {
-    struct timer_cb_node* node = (struct timer_cb_node*)je_malloc(sizeof(*node));
+    struct timer_cb_node *node = (struct timer_cb_node *)je_malloc(sizeof(*node));
     memset(node, 0, sizeof(*node));
     node->id = make_timer_id(T);
     node->interval = interval;
@@ -192,79 +202,103 @@ static uint32_t timer_cb_add(struct timer* T, uint32_t start, uint32_t interval,
     node->cycle = cycle;
     node->cb = cb;
     Py_XINCREF(cb);
-    uint32_t slot = node->id & (TIMER_CB_SLOT - 1);
-    struct timer_cb_list slotList = T->timer_cb[slot];
-    if (slotList.head == NULL)
+    uint32_t slot = node->id & TIMER_CB_SLOT_MASK;
+    struct timer_cb_list *slotList = &T->timer_cb[slot];
+    if (slotList->head == NULL)
     {
-        slotList.head = node;
-        slotList.tail = node;
+        slotList->head = node;
+        slotList->tail = node;
     }
     else
     {
-        node->last = slotList.tail;
-        slotList.tail->next = node;
-        slotList.tail = node;
+        node->last = slotList->tail;
+        slotList->tail->next = node;
+        slotList->tail = node;
     }
     return node->id;
 }
 
-
-
-static inline void dispatch_list(struct timer_node* current) 
+static inline void dispatch_list(struct timer_node *current)
 {
     while (current)
     {
         struct bluesky_message smsg;
-        smsg.type = ACCEPTED;
-        struct timer_message* timer_msg = je_malloc(sizeof(*timer_msg));
+        smsg.type = TIME_OUT;
+        struct timer_message *timer_msg = je_malloc(sizeof(*timer_msg));
         timer_msg->timer_id = current->timer_id;
         smsg.data = timer_msg;
         skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
         current = current->next;
-        
     }
     pthread_cond_signal(&BLUE_SKYSERVER->cond);
 }
 
-static PyObject* timer_once(PyObject* self, PyObject* args)
+static void *thread_timer()
 {
-    PyObject* timer_cb;
+    while (true)
+    {
+        update_time();
+        usleep(2500);
+    }
+    return NULL;
+}
+
+struct timer_cb_node *get_timer_cb_node(uint32_t timer_id)
+{
+
+    uint32_t slot = timer_id & TIMER_CB_SLOT_MASK;
+    struct timer_cb_list *cb_list = &TIMER->timer_cb[slot];
+    struct timer_cb_node *node = cb_list->head;
+    while (node != NULL)
+    {
+        if (node->id == timer_id)
+        {
+            return node;
+        }
+        node = node->next;
+    }
+    return NULL;
+}
+
+static PyObject *timer_once(PyObject *self, PyObject *args)
+{
+    PyObject *timer_cb;
     uint32_t interval;
 
     if (PyArg_ParseTuple(args, "iO", &interval, &timer_cb))
     {
-        uint32_t timer_id =  timer_cb_add(TIMER, 0, interval, false,timer_cb);
-        timer_add(TIMER, interval,timer_id);
-        PyObject* arglist = Py_BuildValue("(i)", timer_id);
+        uint32_t timer_id = timer_cb_add(TIMER, 0, interval, false, timer_cb);
+        timer_add(TIMER, interval, timer_id);
+        PyObject *arglist = Py_BuildValue("i", timer_id);
         return arglist;
     }
     Py_RETURN_NONE;
 }
 
-static PyObject* timer_cycle(PyObject* self, PyObject* args)
+static PyObject *timer_cycle(PyObject *self, PyObject *args)
 {
-    PyObject* timer_cb;
+    PyObject *timer_cb;
     uint32_t start;
     uint32_t interval;
 
-    if (PyArg_ParseTuple(args, "iiO",&start, &interval, &timer_cb))
+    if (PyArg_ParseTuple(args, "iiO", &start, &interval, &timer_cb))
     {
         uint32_t timer_id = timer_cb_add(TIMER, start, interval, true, timer_cb);
         timer_add(TIMER, interval, timer_id);
-        PyObject* arglist = Py_BuildValue("(i)", timer_id);
+        PyObject *arglist = Py_BuildValue("i", timer_id);
         return arglist;
     }
     Py_RETURN_NONE;
 }
 
-static PyObject* timer_cancel(PyObject* self, PyObject* args)
+static PyObject *timer_cancel(PyObject *self, PyObject *args)
 {
     uint32_t id;
     if (PyArg_ParseTuple(args, "i", &id))
     {
         uint32_t slot = id & (TIMER_CB_SLOT - 1);
         struct timer_cb_list slotList = TIMER->timer_cb[slot];
-        struct timer_cb_node* node = slotList.head;
+        struct timer_cb_node *node = slotList.head;
         while (node != NULL)
         {
             if (node->id == id)
@@ -295,21 +329,30 @@ static PyObject* timer_cancel(PyObject* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
+static PyObject *timer_init(PyObject *self, PyObject *args)
+{
+    init_timer();
+    pthread_t sokcet_t;
+    pthread_create(&sokcet_t, NULL, thread_timer, NULL);
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef timer_methods[] = {
     {"timerOnce", (PyCFunction)timer_once, METH_VARARGS, NULL},
     {"timerCycle", (PyCFunction)timer_cycle, METH_VARARGS, NULL},
     {"cancel", (PyCFunction)timer_cancel, METH_VARARGS, NULL},
-    {NULL, NULL, 0, NULL} };
+    {"init", (PyCFunction)timer_init, METH_VARARGS, NULL},
+    {NULL, NULL, 0, NULL}};
 
 static struct PyModuleDef timer_module =
-{
-    PyModuleDef_HEAD_INIT,
-    "timer",                                                               /* name of module */
-    "usage: Combinations.uniqueCombinations(lstSortableItems, comboSize)\n", /* module documentation, may be NULL */
-    -1,                                                                      /* size of per-interpreter state of the module, or -1 if the module keeps state in global variables. */
-    timer_methods };
+    {
+        PyModuleDef_HEAD_INIT,
+        "timer",                                                                 /* name of module */
+        "usage: Combinations.uniqueCombinations(lstSortableItems, comboSize)\n", /* module documentation, may be NULL */
+        -1,                                                                      /* size of per-interpreter state of the module, or -1 if the module keeps state in global variables. */
+        timer_methods};
 
-PyObject* PyInit_timer()
+PyObject *PyInit_timer()
 {
     return PyModule_Create(&timer_module);
 };

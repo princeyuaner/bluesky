@@ -6,6 +6,7 @@ enum MESSAGE_TYPE
 	RECV_DATA,
 	ACCEPTED,
 	WRITE_DATA,
+	TIME_OUT,
 };
 
 struct bluesky_message
