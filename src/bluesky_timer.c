@@ -181,6 +181,39 @@ static void timer_add(struct timer *T, int interval, uint32_t timer_id)
     SPIN_UNLOCK(T);
 }
 
+static void timer_del(uint32_t timer_id)
+{
+    uint32_t slot = timer_id & TIMER_CB_SLOT_MASK;
+    struct timer_cb_list *slotList = &TIMER->timer_cb[slot];
+    struct timer_cb_node *node = slotList->head;
+    while (node != NULL)
+    {
+        if (node->id == timer_id)
+        {
+            if (node->last != NULL)
+            {
+                node->last->next = node->next;
+            }
+            else
+            {
+                slotList->head = node->next;
+            }
+            if (node->next != NULL)
+            {
+                node->next->last = node->last;
+            }
+            else
+            {
+                slotList->tail = node->last;
+            }
+            Py_XDECREF(node->cb);
+            je_free(node);
+            break;
+        }
+        node = node->next;
+    }
+}
+
 static void move_list(struct timer *T, int level, int idx)
 {
     struct timer_node *current = clear_list(&T->timer[level][idx]);
@@ -260,6 +293,24 @@ struct timer_cb_node *get_timer_cb_node(uint32_t timer_id)
     return NULL;
 }
 
+void timer_timeout(uint32_t timer_id)
+{
+    struct timer_cb_node *cb_node = get_timer_cb_node(timer_id);
+    if (cb_node != NULL)
+    {
+        printf("timer_timeout id:%d\n", timer_id);
+        PyObject_CallObject(cb_node->cb, NULL);
+        if (cb_node->cycle)
+        {
+            timer_add(TIMER, cb_node->interval, timer_id);
+        }
+        else
+        {
+            timer_del(timer_id);
+        }
+    }
+}
+
 static PyObject *timer_once(PyObject *self, PyObject *args)
 {
     PyObject *timer_cb;
@@ -284,7 +335,14 @@ static PyObject *timer_cycle(PyObject *self, PyObject *args)
     if (PyArg_ParseTuple(args, "iiO", &start, &interval, &timer_cb))
     {
         uint32_t timer_id = timer_cb_add(TIMER, start, interval, true, timer_cb);
-        timer_add(TIMER, interval, timer_id);
+        if (start > 0)
+        {
+            timer_add(TIMER, start, timer_id);
+        }
+        else
+        {
+            timer_add(TIMER, interval, timer_id);
+        }
         PyObject *arglist = Py_BuildValue("i", timer_id);
         return arglist;
     }
@@ -296,35 +354,7 @@ static PyObject *timer_cancel(PyObject *self, PyObject *args)
     uint32_t id;
     if (PyArg_ParseTuple(args, "i", &id))
     {
-        uint32_t slot = id & (TIMER_CB_SLOT - 1);
-        struct timer_cb_list slotList = TIMER->timer_cb[slot];
-        struct timer_cb_node *node = slotList.head;
-        while (node != NULL)
-        {
-            if (node->id == id)
-            {
-                if (node->last != NULL)
-                {
-                    node->last->next = node->next;
-                }
-                else
-                {
-                    slotList.head = node->next;
-                }
-                if (node->next != NULL)
-                {
-                    node->next->last = node->last;
-                }
-                else
-                {
-                    slotList.tail = node->last;
-                }
-                Py_XDECREF(node->cb);
-                je_free(node);
-                break;
-            }
-            node = node->next;
-        }
+        timer_del(id);
     }
     Py_RETURN_NONE;
 }
@@ -355,4 +385,4 @@ static struct PyModuleDef timer_module =
 PyObject *PyInit_timer()
 {
     return PyModule_Create(&timer_module);
-};
+}

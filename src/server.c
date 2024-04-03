@@ -50,15 +50,7 @@ static PyObject *py_start(PyObject *self, PyObject *args)
             {
                 struct timer_message *timer_msg = (struct timer_message *)msg.data;
                 printf("timeout id:%d\n", timer_msg->timer_id);
-                struct timer_cb_node *cb_node = get_timer_cb_node(timer_msg->timer_id);
-                if (cb_node != NULL)
-                {
-                    printf("timeout1 id:%d\n", timer_msg->timer_id);
-                    PyObject_CallObject(cb_node->cb, NULL);
-                    if (cb_node->cycle)
-                    {
-                    }
-                }
+                timer_timeout(timer_msg->timer_id);
                 je_free(timer_msg);
             }
         }

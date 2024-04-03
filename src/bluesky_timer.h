@@ -61,6 +61,7 @@ void init_timer(void);
 uint32_t make_timer_id(struct timer *T);
 void update_time();
 struct timer_cb_node *get_timer_cb_node(uint32_t timer_id);
+void timer_timeout(uint32_t timer_id);
 
 PyObject *PyInit_timer();
 
