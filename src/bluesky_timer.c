@@ -1,7 +1,7 @@
 #include <bluesky_timer.h>
 #include <jemalloc.h>
-#include <message.h>
-#include <server.h>
+#include <bluesky_message.h>
+#include <bluesky_server.h>
 #include <skynet_mq.h>
 
 #include <time.h>

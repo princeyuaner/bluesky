@@ -1,5 +1,5 @@
-#include <network.h>
-#include <server.h>
+#include <bluesky_network.h>
+#include <bluesky_server.h>
 #include <bluesky_timer.h>
 
 static int bluesky_exec(PyObject *module)

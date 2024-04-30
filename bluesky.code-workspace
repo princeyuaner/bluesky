@@ -8,7 +8,12 @@
 		"editor.formatOnSave": true,
 		"editor.defaultFormatter": "ms-vscode.cpptools",
 		"files.associations": {
-			"spinlock.h": "c"
+			"spinlock.h": "c",
+			"bluesky_server.h": "c",
+			"bluesky_message.h": "c",
+			"stdint.h": "c",
+			"bluesky_timer.h": "c",
+			"jemalloc.h": "c"
 		},
 		"C_Cpp.default.includePath": [
 			"Y:\\project\\bluesky\\**"
