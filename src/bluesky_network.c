@@ -21,11 +21,11 @@ static void conn_eventcb(struct bufferevent *bev, short events, void *user_data)
     }
     else if (events & BEV_EVENT_CONNECTED)
     {
-        struct connect_cb_message *arg = (struct connect_cb_message *)bev->cbarg;
+        struct socket *s = (struct socket *)bev->cbarg;
         struct bluesky_message smsg;
         smsg.type = CONNECTED;
         struct connected_message *connected_msg = je_malloc(sizeof(*connected_msg));
-        connected_msg->id = arg->id;
+        connected_msg->id = s->id;
         printf("服务器已连接 %d\n", connected_msg->id);
         smsg.data = connected_msg;
         skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
@@ -39,7 +39,7 @@ static void conn_eventcb(struct bufferevent *bev, short events, void *user_data)
 
 static void conn_readcb(struct bufferevent *bev, void *arg)
 {
-    struct socket *s = (struct socket *)arg;
+    struct socket *s = (struct socket *)bev->cbarg;
     struct evbuffer *input = bufferevent_get_input(bev);
     size_t totalLen = evbuffer_get_length(input);
     char *buf = je_malloc(sizeof(*buf) * totalLen);
@@ -57,7 +57,7 @@ static void conn_readcb(struct bufferevent *bev, void *arg)
 
 static void conn_writecb(struct bufferevent *bev, void *arg)
 {
-    struct socket *s = (struct socket *)arg;
+    struct socket *s = (struct socket *)bev->cbarg;
     struct bluesky_message message;
     if (skynet_mq_top(s->message_queue, &message) == 1)
     {
@@ -145,9 +145,10 @@ static void do_connect(struct request_connect *connect)
 
     // 设置回调
     printf("do_connect %d\n", connect->id);
-    struct connect_cb_message *connect_cb_msg = je_malloc(sizeof(*connect_cb_msg));
-    connect_cb_msg->id = connect->id;
-    bufferevent_setcb(bev, conn_readcb, conn_writecb, conn_eventcb, connect_cb_msg);
+    struct socket *s = &SOCKET_SERVER->slot[HASH_ID(connect->id)];
+    s->client_bev = bev;
+    s->id = connect->id;
+    bufferevent_setcb(bev, conn_readcb, conn_writecb, conn_eventcb, s);
     bufferevent_enable(bev, EV_READ | EV_PERSIST);
 }
 
@@ -315,6 +316,7 @@ static PyObject *network_write_data(PyObject *self, PyObject *args)
     {
         Py_RETURN_NONE;
     }
+    printf("network_write_data1\n");
     struct socket *s = &SOCKET_SERVER->slot[HASH_ID(id)];
     // 将待发送的数据写入socket队列
     struct bluesky_message smsg;
@@ -343,7 +345,7 @@ static PyObject *network_connect(PyObject *self, PyObject *args)
     request.u.connect.addr = addr;
     request.u.connect.id = id;
     send_request(&request, 'C', sizeof(request.u.connect));
-    PyObject *ret = Py_BuildValue("(i)", id);
+    PyObject *ret = Py_BuildValue("i", id);
     return ret;
 }
 
