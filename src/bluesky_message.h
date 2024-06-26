@@ -7,6 +7,7 @@ enum MESSAGE_TYPE
 	ACCEPTED,
 	WRITE_DATA,
 	TIME_OUT,
+	CONNECTED,
 };
 
 struct bluesky_message
@@ -43,6 +44,11 @@ struct connect_message
 struct timer_message
 {
 	uint32_t timer_id;
+};
+
+struct connected_message
+{
+	int id;
 };
 
 #endif

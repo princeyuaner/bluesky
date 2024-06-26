@@ -21,7 +21,15 @@ static void conn_eventcb(struct bufferevent *bev, short events, void *user_data)
     }
     else if (events & BEV_EVENT_CONNECTED)
     {
-        printf("服务器已连接1\n");
+        struct connected_message *arg = (struct connected_message *)bev->cbarg;
+        struct bluesky_message smsg;
+        smsg.type = CONNECTED;
+        struct connected_message *connected_msg = je_malloc(sizeof(*connected_msg));
+        connected_msg->id = arg->id;
+        printf("服务器已连接 %d\n", connected_msg->id);
+        smsg.data = connected_msg;
+        skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
+        pthread_cond_signal(&BLUE_SKYSERVER->cond);
         return;
     }
     /* None of the other events can happen here, since we haven't enabled
@@ -39,10 +47,10 @@ static void conn_readcb(struct bufferevent *bev, void *arg)
     printf("receive data:%s, size1:%d id:%d\n", buf, (int)totalLen, s->id);
     struct bluesky_message smsg;
     smsg.type = RECV_DATA;
-    struct recv_data_message recv_data_msg;
-    recv_data_msg.id = s->id;
-    recv_data_msg.data = buf;
-    smsg.data = &recv_data_msg;
+    struct recv_data_message *recv_data_msg = je_malloc(sizeof(*recv_data_msg));
+    recv_data_msg->id = s->id;
+    recv_data_msg->data = buf;
+    smsg.data = recv_data_msg;
     skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
     pthread_cond_signal(&BLUE_SKYSERVER->cond);
 }
@@ -136,7 +144,10 @@ static void do_connect(struct request_connect *connect)
     bufferevent_socket_connect(bev, (struct sockaddr *)&serv, sizeof(serv));
 
     // 设置回调
-    bufferevent_setcb(bev, conn_readcb, conn_writecb, conn_eventcb, &connect->id);
+    printf("do_connect %d\n", connect->id);
+    struct connected_message *connected_msg = je_malloc(sizeof(*connected_msg));
+    connected_msg->id = connect->id;
+    bufferevent_setcb(bev, conn_readcb, conn_writecb, conn_eventcb, connected_msg);
     bufferevent_enable(bev, EV_READ | EV_PERSIST);
 }
 
@@ -253,8 +264,9 @@ static PyObject *network_init(PyObject *self, PyObject *args)
     PyObject *accept_cb;
     PyObject *disconnect_cd;
     PyObject *data_recv_cb;
+    PyObject *connect_cb;
 
-    if (PyArg_ParseTuple(args, "OOO", &accept_cb, &disconnect_cd, &data_recv_cb))
+    if (PyArg_ParseTuple(args, "OOOO", &accept_cb, &disconnect_cd, &data_recv_cb, &connect_cb))
     {
         if (!PyCallable_Check(accept_cb))
         {
@@ -271,6 +283,11 @@ static PyObject *network_init(PyObject *self, PyObject *args)
             PyErr_SetString(PyExc_TypeError, "data_recv_cb must be callable");
             Py_RETURN_NONE;
         }
+        if (!PyCallable_Check(connect_cb))
+        {
+            PyErr_SetString(PyExc_TypeError, "connect_cb must be callable");
+            Py_RETURN_NONE;
+        }
         Py_XINCREF(accept_cb);                /* Add a reference to new callback */
         SOCKET_SERVER->accept_cb = accept_cb; /* Remember new callback */
 
@@ -279,6 +296,9 @@ static PyObject *network_init(PyObject *self, PyObject *args)
 
         Py_XINCREF(data_recv_cb);                   /* Add a reference to new callback */
         SOCKET_SERVER->data_recv_cb = data_recv_cb; /* Remember new callback */
+
+        Py_XINCREF(connect_cb);                 /* Add a reference to new callback */
+        SOCKET_SERVER->connect_cb = connect_cb; /* Remember new callback */
     }
 
     pthread_t sokcet_t;
@@ -313,7 +333,7 @@ static PyObject *network_connect(PyObject *self, PyObject *args)
     printf("network_connect\n");
     char *addr;
     int port;
-    if (!PyArg_ParseTuple(args, "is", &addr, &port))
+    if (!PyArg_ParseTuple(args, "si", &addr, &port))
     {
         Py_RETURN_NONE;
     }
@@ -322,7 +342,7 @@ static PyObject *network_connect(PyObject *self, PyObject *args)
     request.u.connect.port = port;
     request.u.connect.addr = addr;
     request.u.connect.id = id;
-    send_request(&request, 'C', sizeof(request.u.send));
+    send_request(&request, 'C', sizeof(request.u.connect));
     PyObject *ret = Py_BuildValue("(i)", id);
     return ret;
 }

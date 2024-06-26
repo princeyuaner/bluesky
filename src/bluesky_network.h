@@ -47,6 +47,7 @@ struct socket_server
     PyObject *accept_cb;            // 连接回调
     PyObject *disconnect_cb;        // 断开连接回调
     PyObject *data_recv_cb;         // 接收数据回调
+    PyObject *connect_cb;           // 连接回调
     volatile int id;                // id分配
 };
 

@@ -53,6 +53,15 @@ static PyObject *py_start(PyObject *self, PyObject *args)
                 timer_timeout(timer_msg->timer_id);
                 je_free(timer_msg);
             }
+            if (msg.type == CONNECTED)
+            {
+                struct connected_message *connected_message = (struct connected_message *)msg.data;
+                printf("connected_message id:%d\n", connected_message->id);
+                PyObject *arglist = Py_BuildValue("(i)", connected_message->id);
+                PyObject_CallObject(get_socket_server()->connect_cb, arglist);
+                Py_DECREF(arglist);
+                je_free(connected_message);
+            }
         }
         else
         {

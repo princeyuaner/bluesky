@@ -10,6 +10,7 @@ bluesky = Extension(name='bluesky',
 
 
 setup(name='bluesky',
+      script_name="bluesky",
       version='1.0',
       description='This is a bluesky package',
       ext_modules=[bluesky])
