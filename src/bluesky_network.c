@@ -21,7 +21,7 @@ static void conn_eventcb(struct bufferevent *bev, short events, void *user_data)
     }
     else if (events & BEV_EVENT_CONNECTED)
     {
-        struct connected_message *arg = (struct connected_message *)bev->cbarg;
+        struct connect_cb_message *arg = (struct connect_cb_message *)bev->cbarg;
         struct bluesky_message smsg;
         smsg.type = CONNECTED;
         struct connected_message *connected_msg = je_malloc(sizeof(*connected_msg));
@@ -145,9 +145,9 @@ static void do_connect(struct request_connect *connect)
 
     // 设置回调
     printf("do_connect %d\n", connect->id);
-    struct connected_message *connected_msg = je_malloc(sizeof(*connected_msg));
-    connected_msg->id = connect->id;
-    bufferevent_setcb(bev, conn_readcb, conn_writecb, conn_eventcb, connected_msg);
+    struct connect_cb_message *connect_cb_msg = je_malloc(sizeof(*connect_cb_msg));
+    connect_cb_msg->id = connect->id;
+    bufferevent_setcb(bev, conn_readcb, conn_writecb, conn_eventcb, connect_cb_msg);
     bufferevent_enable(bev, EV_READ | EV_PERSIST);
 }
 

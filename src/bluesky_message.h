@@ -51,4 +51,9 @@ struct connected_message
 	int id;
 };
 
+struct connect_cb_message
+{
+	int id;
+};
+
 #endif
