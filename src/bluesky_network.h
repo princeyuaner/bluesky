@@ -84,5 +84,6 @@ struct request_package
 bool create_socket_server();
 struct socket_server *get_socket_server();
 int make_id(struct socket_server *ss);
+void close_id(struct socket_server *ss, int id);
 
 PyObject *PyInit_network();

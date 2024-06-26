@@ -12,7 +12,16 @@ static void conn_eventcb(struct bufferevent *bev, short events, void *user_data)
 {
     if (events & BEV_EVENT_EOF)
     {
-        printf("Connection closed.\n");
+        struct socket *s = (struct socket *)bev->cbarg;
+        struct bluesky_message smsg;
+        smsg.type = DISCONNECT;
+        struct disconnect_message *disconnect_msg = je_malloc(sizeof(*disconnect_msg));
+        disconnect_msg->id = s->id;
+        printf("连接关闭 %d\n", disconnect_msg->id);
+        smsg.data = disconnect_msg;
+        skynet_mq_push(BLUE_SKYSERVER->queue, &smsg);
+        pthread_cond_signal(&BLUE_SKYSERVER->cond);
+        close_id(SOCKET_SERVER, s->id);
     }
     else if (events & BEV_EVENT_ERROR)
     {
@@ -72,11 +81,6 @@ static void conn_writecb(struct bufferevent *bev, void *arg)
         {
             printf("写数据成功\n");
             skynet_mq_pop(s->message_queue, &message);
-            // if (skynet_mq_length(s->message_queue) == 0)
-            // {
-            //     // 没有数据要发送，取消监听
-            //     bufferevent_disable(bev, EV_WRITE);
-            // }
         }
     }
 }
@@ -394,6 +398,15 @@ int make_id(struct socket_server *ss)
         }
     }
     return -1;
+}
+
+void close_id(struct socket_server *ss, int id)
+{
+    struct socket *s = &ss->slot[HASH_ID(id)];
+    if (__sync_bool_compare_and_swap(&s->type, SOCKET_TYPE_RESERVE, SOCKET_TYPE_INVALID))
+    {
+        s->client_bev = NULL;
+    }
 }
 
 static PyMethodDef network_methods[] = {
